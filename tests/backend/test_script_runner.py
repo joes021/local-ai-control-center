@@ -17,11 +17,14 @@ class ScriptRunnerTests(unittest.TestCase):
         self.assertEqual(payload["summary"], "Sve je u redu")
         self.assertEqual(payload["action"], "repair-install")
 
-    def test_target_platform_defaults_to_linux(self):
-        from backend.app.services.platform_config import get_target_platform
+    def test_target_platform_defaults_to_host_platform(self):
+        from backend.app.services import platform_config
 
-        with mock.patch.dict("os.environ", {}, clear=False):
-            self.assertEqual(get_target_platform(), "linux")
+        with (
+            mock.patch.dict("os.environ", {}, clear=True),
+            mock.patch.object(platform_config.sys, "platform", "win32"),
+        ):
+            self.assertEqual(platform_config.get_target_platform(), "windows")
 
     def test_target_platform_accepts_windows(self):
         from backend.app.services.platform_config import get_target_platform

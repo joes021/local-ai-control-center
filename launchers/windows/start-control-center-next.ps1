@@ -146,13 +146,15 @@ function Open-AppUrl([string]$Url) {
 function Start-Backend([int]$Port) {
     $pythonExe = Get-PythonExe
     $frontendDist = Join-Path $script:FrontendDir "dist"
-    $uvicornCommand = "python -m uvicorn backend.app.main:app --host 127.0.0.1 --port $Port"
+    $localQwenHome = if ($env:LOCAL_QWEN_HOME) { $env:LOCAL_QWEN_HOME } else { Join-Path $env:USERPROFILE "LocalQwenHome" }
     $psCommand = @"
 Set-Location '$($script:Root)'
+`$env:CONTROL_CENTER_NEXT_TARGET_PLATFORM = 'windows'
 `$env:CONTROL_CENTER_NEXT_UI_PORT = '$Port'
 `$env:CONTROL_CENTER_NEXT_ACCESS_MODE = 'local-only'
 `$env:CONTROL_CENTER_NEXT_HOST = '127.0.0.1'
 `$env:CONTROL_CENTER_NEXT_FRONTEND_DIST = '$frontendDist'
+`$env:LOCAL_QWEN_HOME = '$localQwenHome'
 & '$pythonExe' -m uvicorn backend.app.main:app --host 127.0.0.1 --port $Port
 "@
     $process = Start-Process powershell -ArgumentList @(

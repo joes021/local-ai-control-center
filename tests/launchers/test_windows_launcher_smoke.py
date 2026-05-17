@@ -15,11 +15,13 @@ class WindowsLauncherSmokeTests(unittest.TestCase):
         self.assertIn("3210", content)
         self.assertIn("/api/health", content)
         self.assertIn("CONTROL_CENTER_NEXT_UI_PORT", content)
+        self.assertIn("CONTROL_CENTER_NEXT_TARGET_PLATFORM", content)
+        self.assertIn("LOCAL_QWEN_HOME", content)
         self.assertIn("select_first_free_port", content)
         self.assertIn("Start-Process", content)
         self.assertIn("Start-Process $browserPath", content)
         self.assertIn("runtime-state.json", content)
-        self.assertIn("python -m uvicorn backend.app.main:app", content)
+        self.assertIn("-m uvicorn backend.app.main:app", content)
 
     def test_windows_backend_checker_hits_health_endpoint(self):
         content = CHECKER.read_text(encoding="utf-8")

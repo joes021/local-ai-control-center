@@ -3,6 +3,15 @@ from unittest import mock
 
 
 class PlatformServicesTests(unittest.TestCase):
+    def test_platform_config_defaults_to_host_windows(self):
+        from backend.app.services import platform_config
+
+        with (
+            mock.patch.dict("os.environ", {}, clear=True),
+            mock.patch.object(platform_config.sys, "platform", "win32"),
+        ):
+            self.assertEqual(platform_config.get_target_platform(), "windows")
+
     def test_logs_service_uses_platform_launcher(self):
         from backend.app.services import logs_service
 
