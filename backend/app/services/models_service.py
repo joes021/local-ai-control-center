@@ -144,7 +144,17 @@ def add_local_model(path: str, label: str = "", family: str = "Custom") -> dict[
         payload = result.get("payload", {})
         if result.get("status") == "ok":
             model_id = payload.get("id", "") if isinstance(payload, dict) else ""
-            result["summary"] = f"Lokalni model dodat: {model_id or path}"
+            return {
+                "status": "ok",
+                "action": "Import-LocalGgufModel",
+                "summary": f"Lokalni model dodat: {model_id or path}",
+                "details": {
+                    "returncode": 0,
+                    "stdout": "",
+                    "stderr": "",
+                },
+            }
+        result.pop("payload", None)
         return result
     args = ["add-local", path]
     if label:
@@ -165,7 +175,17 @@ def add_hf_model(
         payload = result.get("payload", {})
         if result.get("status") == "ok":
             model_id = payload.get("id", "") if isinstance(payload, dict) else ""
-            result["summary"] = f"HF model dodat: {model_id or filename}"
+            return {
+                "status": "ok",
+                "action": "Add-HuggingFaceCustomModel",
+                "summary": f"HF model dodat: {model_id or filename}",
+                "details": {
+                    "returncode": 0,
+                    "stdout": "",
+                    "stderr": "",
+                },
+            }
+        result.pop("payload", None)
         return result
     args = ["add-hf", repo, filename]
     if label:
@@ -186,7 +206,17 @@ def add_unsloth_model(
         payload = result.get("payload", {})
         if result.get("status") == "ok":
             model_id = payload.get("id", "") if isinstance(payload, dict) else ""
-            result["summary"] = f"Unsloth model dodat: {model_id or filename}"
+            return {
+                "status": "ok",
+                "action": "Add-UnslothCustomModel",
+                "summary": f"Unsloth model dodat: {model_id or filename}",
+                "details": {
+                    "returncode": 0,
+                    "stdout": "",
+                    "stderr": "",
+                },
+            }
+        result.pop("payload", None)
         return result
     args = ["add-unsloth", repo, filename]
     if label:

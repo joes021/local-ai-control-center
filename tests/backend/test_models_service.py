@@ -1,6 +1,7 @@
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 
 class ModelsServiceTests(unittest.TestCase):
@@ -84,6 +85,33 @@ class ModelsServiceTests(unittest.TestCase):
             )
 
             self.assertEqual(result["status"], "error")
+
+    def test_windows_add_model_actions_strip_internal_payload(self):
+        from backend.app.services import models_service
+
+        raw_result = {
+            "status": "ok",
+            "action": "Add-UnslothCustomModel",
+            "summary": "ok",
+            "details": {"returncode": 0, "stdout": "{}", "stderr": ""},
+            "payload": {"id": "unsloth-demo.gguf"},
+        }
+
+        with (
+            mock.patch.dict("os.environ", {"CONTROL_CENTER_NEXT_TARGET_PLATFORM": "windows"}, clear=False),
+            mock.patch.object(models_service, "invoke_windows_common_json", return_value=dict(raw_result)),
+        ):
+            result = models_service.add_unsloth_model(
+                "unsloth/demo",
+                "demo.gguf",
+                "Demo",
+                "Unsloth",
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertNotIn("payload", result)
+        self.assertIn("Unsloth model dodat", result["summary"])
+        self.assertEqual(result["details"]["stdout"], "")
 
 
 if __name__ == "__main__":

@@ -61,18 +61,35 @@ export async function deleteTurboQuantPreset(presetId: string): Promise<ActionRe
   return postJson("/api/settings/turboquant-presets/delete", { presetId });
 }
 
-async function postJson<TRequest, TResponse>(url: string, body: TRequest): Promise<TResponse> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    throw new Error(`POST ${url} failed: ${response.status}`);
+async function postJson<TRequest, TResponse>(
+  url: string,
+  body: TRequest,
+  timeoutMs?: number,
+): Promise<TResponse> {
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : undefined;
+  const timeoutId =
+    controller && timeoutMs
+      ? window.setTimeout(() => controller.abort(), timeoutMs)
+      : undefined;
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: controller?.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`POST ${url} failed: ${response.status}`);
+    }
+    return response.json() as Promise<TResponse>;
+  } finally {
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+    }
   }
-  return response.json() as Promise<TResponse>;
 }
 
 export async function activateModel(modelId: string): Promise<ActionResult> {
@@ -88,7 +105,7 @@ export async function addLocalModel(
   label: string,
   family: string,
 ): Promise<ActionResult> {
-  return postJson("/api/models/add-local", { path, label, family });
+  return postJson("/api/models/add-local", { path, label, family }, 4000);
 }
 
 export async function addHfModel(
@@ -97,7 +114,7 @@ export async function addHfModel(
   label: string,
   family: string,
 ): Promise<ActionResult> {
-  return postJson("/api/models/add-hf", { repo, filename, label, family });
+  return postJson("/api/models/add-hf", { repo, filename, label, family }, 4000);
 }
 
 export async function addUnslothModel(
@@ -106,7 +123,7 @@ export async function addUnslothModel(
   label: string,
   family: string,
 ): Promise<ActionResult> {
-  return postJson("/api/models/add-unsloth", { repo, filename, label, family });
+  return postJson("/api/models/add-unsloth", { repo, filename, label, family }, 4000);
 }
 
 export async function deleteModel(

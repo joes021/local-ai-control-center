@@ -20,6 +20,11 @@ import type {
 } from "../lib/types";
 
 type GroupKey = "curated" | "local" | "huggingFace" | "unsloth";
+type ModelsFilter = "all" | "installed" | "active";
+
+function isAbortLikeError(reason: unknown) {
+  return reason instanceof DOMException && reason.name === "AbortError";
+}
 
 function ModelGroup({
   title,
@@ -34,7 +39,7 @@ function ModelGroup({
   items: ModelEntry[];
   collapsed: boolean;
   onToggle: (group: GroupKey) => void;
-  onChanged: () => Promise<void>;
+  onChanged: () => Promise<unknown>;
 }) {
   const [result, setResult] = useState<ActionResult | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -72,6 +77,7 @@ function ModelGroup({
         </button>
       </div>
       {!collapsed ? (
+        items.length ? (
         <div className="model-list">
           {items.map((item) => (
             <article className="model-item" key={item.id}>
@@ -162,6 +168,9 @@ function ModelGroup({
             </article>
           ))}
         </div>
+        ) : (
+          <div className="helper-text">Nema modela za izabrani filter u ovoj grupi.</div>
+        )
       ) : (
         <div className="helper-text">Sekcija je sklopljena.</div>
       )}
@@ -181,6 +190,7 @@ export function ModelsPage() {
   const [result, setResult] = useState<ActionResult | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [recommendedModels, setRecommendedModels] = useState<RecommendedModel[]>([]);
+  const [modelsFilter, setModelsFilter] = useState<ModelsFilter>("all");
   const [collapsedGroups, setCollapsedGroups] = useState<Record<GroupKey, boolean>>({
     curated: false,
     local: false,
@@ -220,8 +230,10 @@ export function ModelsPage() {
       const payload = await fetchModels();
       setModels(payload);
       setError(null);
+      return payload;
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "Nepoznata greska");
+      return null;
     }
   }
 
@@ -243,11 +255,51 @@ export function ModelsPage() {
     };
   }, [models]);
 
+  const filteredModels = useMemo(() => {
+    if (!models) {
+      return null;
+    }
+
+    function matchesFilter(item: ModelEntry) {
+      if (modelsFilter === "installed") {
+        return item.installed;
+      }
+      if (modelsFilter === "active") {
+        return item.active;
+      }
+      return true;
+    }
+
+    return {
+      curated: models.curated.filter(matchesFilter),
+      local: models.local.filter(matchesFilter),
+      huggingFace: models.huggingFace.filter(matchesFilter),
+      unsloth: models.unsloth.filter(matchesFilter),
+    };
+  }, [models, modelsFilter]);
+
+  const filteredSummary = useMemo(() => {
+    if (!filteredModels) {
+      return { total: 0, installed: 0, active: 0 };
+    }
+    const items = [
+      ...filteredModels.curated,
+      ...filteredModels.local,
+      ...filteredModels.huggingFace,
+      ...filteredModels.unsloth,
+    ];
+    return {
+      total: items.length,
+      installed: items.filter((item) => item.installed).length,
+      active: items.filter((item) => item.active).length,
+    };
+  }, [filteredModels]);
+
   if (error) {
     return <div className="error-panel">{error}</div>;
   }
 
-  if (!models) {
+  if (!models || !filteredModels) {
     return <div className="status-card wide-card">Ucitavam modele...</div>;
   }
 
@@ -257,6 +309,27 @@ export function ModelsPage() {
         <div className="section-header">
           <span className="status-label">Model browser</span>
           <div className="inline-actions compact-actions">
+            <button
+              type="button"
+              className={`secondary-button ${modelsFilter === "all" ? "nav-button-active" : ""}`}
+              onClick={() => setModelsFilter("all")}
+            >
+              Svi
+            </button>
+            <button
+              type="button"
+              className={`secondary-button ${modelsFilter === "installed" ? "nav-button-active" : ""}`}
+              onClick={() => setModelsFilter("installed")}
+            >
+              Skinuti
+            </button>
+            <button
+              type="button"
+              className={`secondary-button ${modelsFilter === "active" ? "nav-button-active" : ""}`}
+              onClick={() => setModelsFilter("active")}
+            >
+              Aktivni
+            </button>
             <button
               type="button"
               className="secondary-button"
@@ -288,8 +361,14 @@ export function ModelsPage() {
           </div>
         </div>
         <strong className="status-value">
-          Ukupno modela: {summary.total} | Skinuto: {summary.installed}
+          Prikaz: {modelsFilter === "all" ? "Svi" : modelsFilter === "installed" ? "Skinuti" : "Aktivni"} |
+          Ukupno: {filteredSummary.total} | Skinuto: {filteredSummary.installed} | Aktivno: {filteredSummary.active}
         </strong>
+        {modelsFilter !== "all" ? (
+          <p className="helper-text">
+            Ukupno u katalogu: {summary.total} | Ukupno skinuto: {summary.installed}
+          </p>
+        ) : null}
       </section>
 
       <section className="status-card wide-card">
@@ -348,9 +427,25 @@ export function ModelsPage() {
                 setResult(actionResult);
                 await reloadModels();
               } catch (reason: unknown) {
-                showClientError(
-                  reason instanceof Error ? reason.message : "Dodavanje lokalnog modela nije uspelo.",
-                );
+                if (isAbortLikeError(reason)) {
+                  const refreshed = await reloadModels();
+                  const fileName = localPath.trim().split(/[\\/]/).pop() ?? "";
+                  const found = refreshed?.local.some((item) => item.filename === fileName);
+                  if (found) {
+                    setResult({
+                      status: "ok",
+                      action: "add-local-timeout-recovery",
+                      summary: `Lokalni model dodat: ${fileName}`,
+                      details: { returncode: 0, stdout: "", stderr: "" },
+                    });
+                  } else {
+                    showClientError("Dodavanje lokalnog modela jos nije potvrdjeno. Probaj refresh liste.");
+                  }
+                } else {
+                  showClientError(
+                    reason instanceof Error ? reason.message : "Dodavanje lokalnog modela nije uspelo.",
+                  );
+                }
               } finally {
                 setPendingAction(null);
               }
@@ -391,11 +486,28 @@ export function ModelsPage() {
                 setResult(actionResult);
                 await reloadModels();
               } catch (reason: unknown) {
-                showClientError(
-                  reason instanceof Error
-                    ? reason.message
-                    : "Dodavanje Unsloth modela nije uspelo.",
-                );
+                if (isAbortLikeError(reason)) {
+                  const refreshed = await reloadModels();
+                  const found = refreshed?.unsloth.some(
+                    (item) => item.filename === unslothFilename.trim(),
+                  );
+                  if (found) {
+                    setResult({
+                      status: "ok",
+                      action: "add-unsloth-timeout-recovery",
+                      summary: `Unsloth model dodat: ${unslothFilename.trim()}`,
+                      details: { returncode: 0, stdout: "", stderr: "" },
+                    });
+                  } else {
+                    showClientError("Dodavanje Unsloth modela jos nije potvrdjeno. Probaj refresh liste.");
+                  }
+                } else {
+                  showClientError(
+                    reason instanceof Error
+                      ? reason.message
+                      : "Dodavanje Unsloth modela nije uspelo.",
+                  );
+                }
               } finally {
                 setPendingAction(null);
               }
@@ -434,9 +546,26 @@ export function ModelsPage() {
                 setResult(actionResult);
                 await reloadModels();
               } catch (reason: unknown) {
-                showClientError(
-                  reason instanceof Error ? reason.message : "Dodavanje HF modela nije uspelo.",
-                );
+                if (isAbortLikeError(reason)) {
+                  const refreshed = await reloadModels();
+                  const found = refreshed?.huggingFace.some(
+                    (item) => item.filename === hfFilename.trim(),
+                  );
+                  if (found) {
+                    setResult({
+                      status: "ok",
+                      action: "add-hf-timeout-recovery",
+                      summary: `HF model dodat: ${hfFilename.trim()}`,
+                      details: { returncode: 0, stdout: "", stderr: "" },
+                    });
+                  } else {
+                    showClientError("Dodavanje HF modela jos nije potvrdjeno. Probaj refresh liste.");
+                  }
+                } else {
+                  showClientError(
+                    reason instanceof Error ? reason.message : "Dodavanje HF modela nije uspelo.",
+                  );
+                }
               } finally {
                 setPendingAction(null);
               }
@@ -490,11 +619,28 @@ export function ModelsPage() {
                         setUnslothFilename(item.filename);
                         await reloadModels();
                       } catch (reason: unknown) {
-                        showClientError(
-                          reason instanceof Error
-                            ? reason.message
-                            : "Dodavanje Unsloth modela nije uspelo.",
-                        );
+                        if (isAbortLikeError(reason)) {
+                          const refreshed = await reloadModels();
+                          const found = refreshed?.unsloth.some(
+                            (model) => model.filename === item.filename,
+                          );
+                          if (found) {
+                            setResult({
+                              status: "ok",
+                              action: "add-unsloth-timeout-recovery",
+                              summary: `Unsloth model dodat: ${item.filename}`,
+                              details: { returncode: 0, stdout: "", stderr: "" },
+                            });
+                          } else {
+                            showClientError("Dodavanje Unsloth modela jos nije potvrdjeno. Probaj refresh liste.");
+                          }
+                        } else {
+                          showClientError(
+                            reason instanceof Error
+                              ? reason.message
+                              : "Dodavanje Unsloth modela nije uspelo.",
+                          );
+                        }
                       } finally {
                         setPendingAction(null);
                       }
@@ -511,7 +657,7 @@ export function ModelsPage() {
       <ModelGroup
         title="Kurirani modeli"
         groupKey="curated"
-        items={models.curated}
+        items={filteredModels.curated}
         collapsed={collapsedGroups.curated}
         onToggle={(group) =>
           setCollapsedGroups((current) => ({ ...current, [group]: !current[group] }))
@@ -521,7 +667,7 @@ export function ModelsPage() {
       <ModelGroup
         title="Lokalni modeli"
         groupKey="local"
-        items={models.local}
+        items={filteredModels.local}
         collapsed={collapsedGroups.local}
         onToggle={(group) =>
           setCollapsedGroups((current) => ({ ...current, [group]: !current[group] }))
@@ -531,7 +677,7 @@ export function ModelsPage() {
       <ModelGroup
         title="Hugging Face modeli"
         groupKey="huggingFace"
-        items={models.huggingFace}
+        items={filteredModels.huggingFace}
         collapsed={collapsedGroups.huggingFace}
         onToggle={(group) =>
           setCollapsedGroups((current) => ({ ...current, [group]: !current[group] }))
@@ -541,7 +687,7 @@ export function ModelsPage() {
       <ModelGroup
         title="Unsloth modeli"
         groupKey="unsloth"
-        items={models.unsloth}
+        items={filteredModels.unsloth}
         collapsed={collapsedGroups.unsloth}
         onToggle={(group) =>
           setCollapsedGroups((current) => ({ ...current, [group]: !current[group] }))

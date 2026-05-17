@@ -15,6 +15,9 @@ class UiSourceSmokeTests(unittest.TestCase):
 
         self.assertIn("Collapse all", content)
         self.assertIn("Expand all", content)
+        self.assertIn("Svi", content)
+        self.assertIn("Skinuti", content)
+        self.assertIn("Aktivni", content)
         self.assertIn("Delete", content)
         self.assertIn("Pokrecem model akciju", content)
         self.assertIn("Ukloni iz liste", content)
