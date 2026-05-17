@@ -112,10 +112,10 @@ function Reuse-ExistingBackend {
     return $true
 }
 
-function Save-State([int]$Port, [int]$Pid) {
+function Save-State([int]$Port, [int]$ProcessId) {
     [ordered]@{
         port = $Port
-        pid = $Pid
+        pid = $ProcessId
         method = "Start-Process"
     } | ConvertTo-Json | Set-Content -Path $script:StateFile -Encoding utf8
 }
