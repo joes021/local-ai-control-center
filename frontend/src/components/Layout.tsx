@@ -3,14 +3,15 @@ import type { PropsWithChildren, ReactNode } from "react";
 type LayoutProps = PropsWithChildren<{
   title: string;
   subtitle: ReactNode;
+  eyebrow?: ReactNode;
   nav?: ReactNode;
 }>;
 
-export function Layout({ title, subtitle, nav, children }: LayoutProps) {
+export function Layout({ title, subtitle, eyebrow, nav, children }: LayoutProps) {
   return (
     <div className="app-shell">
       <header className="hero">
-        <p className="eyebrow">Ubuntu Desktop GUI Shell</p>
+        <p className="eyebrow">{eyebrow ?? "Local Qwen GUI Shell"}</p>
         <h1>{title}</h1>
         <div className="subtitle">{subtitle}</div>
       </header>

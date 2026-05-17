@@ -3,6 +3,7 @@ import unittest
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+APP_PAGE = ROOT / "frontend" / "src" / "App.tsx"
 MODELS_PAGE = ROOT / "frontend" / "src" / "pages" / "ModelsPage.tsx"
 SETTINGS_PAGE = ROOT / "frontend" / "src" / "pages" / "SettingsPage.tsx"
 HOME_PAGE = ROOT / "frontend" / "src" / "pages" / "HomePage.tsx"
@@ -42,6 +43,14 @@ class UiSourceSmokeTests(unittest.TestCase):
         self.assertIn("Koristi TurboQuant", content)
         self.assertIn("Dostupni runtime-i", content)
         self.assertIn("Status runtime servera", content)
+
+    def test_app_header_uses_host_platform_instead_of_ubuntu_literal(self):
+        content = APP_PAGE.read_text(encoding="utf-8")
+
+        self.assertIn("hostShellLabel", content)
+        self.assertIn("hostPlatformLabel", content)
+        self.assertNotIn("Ubuntu desktop", content)
+        self.assertNotIn("Ubuntu Desktop GUI Shell", content)
 
     def test_models_page_mentions_unsloth_recommendations(self):
         content = MODELS_PAGE.read_text(encoding="utf-8")

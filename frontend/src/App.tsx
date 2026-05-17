@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Layout } from "./components/Layout";
+import { fetchStatus } from "./lib/api";
+import type { StatusPayload } from "./lib/types";
 import { HomePage } from "./pages/HomePage";
 import { LogsPage } from "./pages/LogsPage";
 import { ModelsPage } from "./pages/ModelsPage";
@@ -21,6 +23,27 @@ type PageKey = keyof typeof PAGES;
 
 export default function App() {
   const [page, setPage] = useState<PageKey>("home");
+  const [status, setStatus] = useState<StatusPayload | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    fetchStatus()
+      .then((payload) => {
+        if (active) {
+          setStatus(payload);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setStatus(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const nav = (
     <>
@@ -40,7 +63,8 @@ export default function App() {
   return (
     <Layout
       title="Local Qwen Control Center Next"
-      subtitle="Web UI + lokalni backend pravac za Ubuntu desktop."
+      eyebrow={status?.hostShellLabel ?? "Local Qwen Desktop GUI Shell"}
+      subtitle={`Web UI + lokalni backend pravac za ${status?.hostPlatformLabel ?? "desktop"}.`}
       nav={nav}
     >
       {page === "home" ? <HomePage /> : null}
