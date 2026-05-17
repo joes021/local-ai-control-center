@@ -8,11 +8,13 @@ from uuid import uuid4
 
 from backend.app.services.local_qwen_paths import detect_local_qwen_home
 from backend.app.services.local_qwen_state import read_json_file
+from backend.app.services.platform_config import get_target_platform
 from backend.app.services.runtime_config_service import (
     load_runtime_config,
     save_runtime_config,
 )
 from backend.app.services.script_runner import run_linux_launcher
+from backend.app.services.windows_common_runner import invoke_windows_common_json
 
 
 THINKING_PRESETS = {
@@ -307,6 +309,8 @@ def build_configure_settings_env(payload: dict[str, object]) -> dict[str, str]:
 
 
 def apply_settings(payload: dict[str, object]) -> dict[str, object]:
+    if get_target_platform() == "windows":
+        return apply_settings_windows(payload)
     scope = str(payload.get("settingsScope", "global") or "global")
     home = detect_local_qwen_home()
     active_model_id = str(payload.get("activeModelId", "") or "")
@@ -344,6 +348,72 @@ def apply_settings(payload: dict[str, object]) -> dict[str, object]:
     if result.get("status") == "ok":
         result["summary"] = f"{result.get('summary', '')} | Access mode: {runtime_config['accessMode']}".strip(" |")
     return result
+
+
+def apply_settings_windows(payload: dict[str, object]) -> dict[str, object]:
+    runtime_config = save_runtime_config(payload, state_dir=PROJECT_STATE_DIR)
+    args = [
+        str(payload.get("profile", "balanced") or "balanced"),
+        str(int(payload.get("context", 262144) or 262144)),
+        str(int(payload.get("outputTokens", 8192) or 8192)),
+    ]
+    thinking = apply_thinking_mode(str(payload.get("thinkingMode", "mid") or "mid"))
+    result = invoke_windows_common_json(
+        "Get-Settings",
+    )
+    if result.get("status") != "ok":
+        return result
+    settings_payload = result.get("payload", {})
+    if not isinstance(settings_payload, dict):
+        settings_payload = {}
+    settings_payload.setdefault("profile", str(payload.get("profile", "balanced") or "balanced"))
+    settings_payload.setdefault("llama", {})
+    settings_payload.setdefault("opencode", {})
+    llama = settings_payload["llama"]
+    opencode = settings_payload["opencode"]
+    llama["contextSize"] = int(payload.get("context", 262144) or 262144)
+    llama["maxOutputTokens"] = int(payload.get("outputTokens", 8192) or 8192)
+    llama["contextSizeCustomized"] = True
+    llama["maxOutputTokensCustomized"] = True
+    settings_payload["profile"] = str(payload.get("profile", "balanced") or "balanced")
+    opencode["buildSteps"] = int(thinking["buildSteps"])
+    opencode["planSteps"] = int(thinking["planSteps"])
+    opencode["generalSteps"] = int(thinking["generalSteps"])
+    opencode["exploreSteps"] = int(thinking["exploreSteps"])
+    opencode["workingDirectory"] = str(payload.get("workingDirectory", Path.home()) or Path.home())
+    script_path = detect_local_qwen_home() / "state" / "__control_center_next_settings_tmp.json"
+    script_path.write_text(json.dumps(settings_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    command = (
+        "$ErrorActionPreference='Stop'; "
+        f". '{invoke_windows_common_json.__globals__['resolve_windows_common_script']()}'; "
+        f"$settings = Get-Content -Raw '{script_path}' | ConvertFrom-Json; "
+        "Save-Settings -Settings $settings; "
+        "$configPath = Update-OpenCodeConfig; "
+        "Write-Output \"Sacuvano.\"; "
+        "Write-Output \"OpenCode config: $configPath\""
+    )
+    completed = __import__("subprocess").run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    try:
+        script_path.unlink(missing_ok=True)
+    except Exception:
+        pass
+    return {
+        "status": "ok" if completed.returncode == 0 else "error",
+        "action": "windows-save-settings",
+        "summary": (completed.stdout.strip() or completed.stderr.strip() or "Settings apply zavrsen").splitlines()[0],
+        "details": {
+            "returncode": completed.returncode,
+            "stdout": completed.stdout.strip(),
+            "stderr": completed.stderr.strip(),
+        },
+    }
 
 
 def load_model_override_payload(

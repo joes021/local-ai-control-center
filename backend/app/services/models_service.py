@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from backend.app.services.local_qwen_paths import detect_local_qwen_home
+from backend.app.services.platform_config import get_target_platform
 from backend.app.services.local_qwen_state import read_json_file
 from backend.app.services.script_runner import run_linux_launcher
 from backend.app.services.settings_service import (
@@ -12,6 +13,7 @@ from backend.app.services.settings_service import (
     load_global_defaults_payload,
     load_model_override_payload,
 )
+from backend.app.services.windows_common_runner import invoke_windows_common_json
 
 
 def load_models_payload() -> dict[str, list[dict[str, object]]]:
@@ -88,6 +90,8 @@ def normalize_models(models: list[dict[str, object]]) -> dict[str, list[dict[str
 
 
 def activate_model(model_id: str) -> dict[str, object]:
+    if get_target_platform() == "windows":
+        return _activate_model_windows(model_id)
     ensure_result = _ensure_unsloth_registered(model_id)
     if ensure_result is not None and ensure_result.get("status") != "ok":
         return ensure_result
@@ -126,6 +130,8 @@ def activate_model(model_id: str) -> dict[str, object]:
 
 
 def download_model(model_id: str) -> dict[str, object]:
+    if get_target_platform() == "windows":
+        return _download_model_windows(model_id)
     ensure_result = _ensure_unsloth_registered(model_id)
     if ensure_result is not None and ensure_result.get("status") != "ok":
         return ensure_result
@@ -133,6 +139,13 @@ def download_model(model_id: str) -> dict[str, object]:
 
 
 def add_local_model(path: str, label: str = "", family: str = "Custom") -> dict[str, object]:
+    if get_target_platform() == "windows":
+        result = invoke_windows_common_json("Import-LocalGgufModel", path, label, family)
+        payload = result.get("payload", {})
+        if result.get("status") == "ok":
+            model_id = payload.get("id", "") if isinstance(payload, dict) else ""
+            result["summary"] = f"Lokalni model dodat: {model_id or path}"
+        return result
     args = ["add-local", path]
     if label:
         args.append(label)
@@ -147,6 +160,13 @@ def add_hf_model(
     label: str = "",
     family: str = "Custom",
 ) -> dict[str, object]:
+    if get_target_platform() == "windows":
+        result = invoke_windows_common_json("Add-HuggingFaceCustomModel", repo, filename, label, family)
+        payload = result.get("payload", {})
+        if result.get("status") == "ok":
+            model_id = payload.get("id", "") if isinstance(payload, dict) else ""
+            result["summary"] = f"HF model dodat: {model_id or filename}"
+        return result
     args = ["add-hf", repo, filename]
     if label:
         args.append(label)
@@ -161,6 +181,13 @@ def add_unsloth_model(
     label: str = "",
     family: str = "Unsloth",
 ) -> dict[str, object]:
+    if get_target_platform() == "windows":
+        result = invoke_windows_common_json("Add-UnslothCustomModel", repo, filename, label, family)
+        payload = result.get("payload", {})
+        if result.get("status") == "ok":
+            model_id = payload.get("id", "") if isinstance(payload, dict) else ""
+            result["summary"] = f"Unsloth model dodat: {model_id or filename}"
+        return result
     args = ["add-unsloth", repo, filename]
     if label:
         args.append(label)
@@ -326,4 +353,28 @@ def _result(status: str, action: str, summary: str) -> dict[str, object]:
             "stdout": "",
             "stderr": "" if status == "ok" else summary,
         },
+    }
+
+
+def _activate_model_windows(model_id: str) -> dict[str, object]:
+    result = invoke_windows_common_json("Set-SelectedModel", model_id)
+    if result.get("status") != "ok":
+        return result
+    return {
+        "status": "ok",
+        "action": "Set-SelectedModel",
+        "summary": f"Model postavljen na: {model_id}",
+        "details": result["details"],
+    }
+
+
+def _download_model_windows(model_id: str) -> dict[str, object]:
+    result = invoke_windows_common_json("Download-RecommendedModel", model_id)
+    if result.get("status") != "ok":
+        return result
+    return {
+        "status": "ok",
+        "action": "Download-RecommendedModel",
+        "summary": f"Model download pokrenut za: {model_id}",
+        "details": result["details"],
     }
