@@ -37,14 +37,30 @@ function ModelGroup({
   onChanged: () => Promise<void>;
 }) {
   const [result, setResult] = useState<ActionResult | null>(null);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [removeFile, setRemoveFile] = useState(true);
   const [removeRegistry, setRemoveRegistry] = useState(true);
 
-  async function handleAction(run: () => Promise<ActionResult>) {
-    const actionResult = await run();
-    setResult(actionResult);
-    await onChanged();
+  async function handleAction(label: string, run: () => Promise<ActionResult>) {
+    setPendingAction(label);
+    setResult({
+      status: "pending",
+      action: "models",
+      summary: `Pokrecem model akciju: ${label}`,
+      details: {
+        returncode: 0,
+        stdout: "",
+        stderr: "",
+      },
+    });
+    try {
+      const actionResult = await run();
+      setResult(actionResult);
+      await onChanged();
+    } finally {
+      setPendingAction(null);
+    }
   }
 
   return (
@@ -73,19 +89,22 @@ function ModelGroup({
                 </div>
                 <div className="inline-actions">
                   <button
-                    onClick={() => handleAction(() => activateModel(item.id))}
+                    disabled={Boolean(pendingAction)}
+                    onClick={() => handleAction(`activate ${item.id}`, () => activateModel(item.id))}
                     type="button"
                   >
                     Activate
                   </button>
                   <button
-                    onClick={() => handleAction(() => downloadModel(item.id))}
+                    disabled={Boolean(pendingAction)}
+                    onClick={() => handleAction(`download ${item.id}`, () => downloadModel(item.id))}
                     type="button"
                   >
                     Download
                   </button>
                   <button
                     className="danger-button"
+                    disabled={Boolean(pendingAction)}
                     onClick={() => {
                       setDeleteTargetId(item.id);
                       setRemoveFile(true);
@@ -120,8 +139,11 @@ function ModelGroup({
                     <button
                       type="button"
                       className="danger-button"
+                      disabled={Boolean(pendingAction)}
                       onClick={async () => {
-                        await handleAction(() => deleteModel(item.id, removeFile, removeRegistry));
+                        await handleAction(`delete ${item.id}`, () =>
+                          deleteModel(item.id, removeFile, removeRegistry),
+                        );
                         setDeleteTargetId(null);
                       }}
                     >
@@ -157,6 +179,7 @@ export function ModelsPage() {
   const [hfRepo, setHfRepo] = useState("");
   const [hfFilename, setHfFilename] = useState("");
   const [result, setResult] = useState<ActionResult | null>(null);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [recommendedModels, setRecommendedModels] = useState<RecommendedModel[]>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<GroupKey, boolean>>({
     curated: false,
@@ -174,6 +197,20 @@ export function ModelsPage() {
         returncode: 1,
         stdout: "",
         stderr: summary,
+      },
+    });
+  }
+
+  function showPendingAction(label: string) {
+    setPendingAction(label);
+    setResult({
+      status: "pending",
+      action: "models",
+      summary: `Pokrecem model akciju: ${label}`,
+      details: {
+        returncode: 0,
+        stdout: "",
+        stderr: "",
       },
     });
   }
@@ -265,10 +302,32 @@ export function ModelsPage() {
           />
           <button
             type="button"
+            disabled={Boolean(pendingAction)}
             onClick={() =>
               pickLocalGguf().then((payload) => {
                 if (payload.path) {
                   setLocalPath(payload.path);
+                  setResult({
+                    status: "ok",
+                    action: "pick-local-gguf",
+                    summary: payload.summary,
+                    details: {
+                      returncode: 0,
+                      stdout: payload.path,
+                      stderr: "",
+                    },
+                  });
+                } else {
+                  setResult({
+                    status: payload.status === "cancelled" ? "cancelled" : "error",
+                    action: "pick-local-gguf",
+                    summary: payload.summary,
+                    details: {
+                      returncode: payload.status === "cancelled" ? 0 : 1,
+                      stdout: "",
+                      stderr: payload.summary,
+                    },
+                  });
                 }
               })
             }
@@ -277,12 +336,14 @@ export function ModelsPage() {
           </button>
           <button
             type="button"
+            disabled={Boolean(pendingAction)}
             onClick={async () => {
               if (!localPath.trim()) {
                 showClientError("Izaberi lokalni GGUF fajl pre dodavanja.");
                 return;
               }
               try {
+                showPendingAction("add local");
                 const actionResult = await addLocalModel(localPath, "", "Custom");
                 setResult(actionResult);
                 await reloadModels();
@@ -290,6 +351,8 @@ export function ModelsPage() {
                 showClientError(
                   reason instanceof Error ? reason.message : "Dodavanje lokalnog modela nije uspelo.",
                 );
+              } finally {
+                setPendingAction(null);
               }
             }}
           >
@@ -312,13 +375,13 @@ export function ModelsPage() {
           />
           <button
             type="button"
-            disabled={!unslothRepo.trim() || !unslothFilename.trim()}
             onClick={async () => {
               if (!unslothRepo.trim() || !unslothFilename.trim()) {
                 showClientError("Popuni Unsloth repo i tacan GGUF filename sa kvantizacijom.");
                 return;
               }
               try {
+                showPendingAction("add unsloth");
                 const actionResult = await addUnslothModel(
                   unslothRepo.trim(),
                   unslothFilename.trim(),
@@ -333,6 +396,8 @@ export function ModelsPage() {
                     ? reason.message
                     : "Dodavanje Unsloth modela nije uspelo.",
                 );
+              } finally {
+                setPendingAction(null);
               }
             }}
           >
@@ -358,13 +423,13 @@ export function ModelsPage() {
           />
           <button
             type="button"
-            disabled={!hfRepo.trim() || !hfFilename.trim()}
             onClick={async () => {
               if (!hfRepo.trim() || !hfFilename.trim()) {
                 showClientError("Popuni repo i tacan GGUF filename sa kvantizacijom.");
                 return;
               }
               try {
+                showPendingAction("add hf");
                 const actionResult = await addHfModel(hfRepo.trim(), hfFilename.trim(), "", "Custom");
                 setResult(actionResult);
                 await reloadModels();
@@ -372,6 +437,8 @@ export function ModelsPage() {
                 showClientError(
                   reason instanceof Error ? reason.message : "Dodavanje HF modela nije uspelo.",
                 );
+              } finally {
+                setPendingAction(null);
               }
             }}
           >
@@ -383,6 +450,7 @@ export function ModelsPage() {
           <code>Qwen3-0.6B-Q8_0.gguf</code>.
         </p>
       </section>
+      <ActionResultPanel result={result} />
       <section className="status-card wide-card">
         <span className="status-label">Unsloth GGUF preporuke</span>
         <p className="helper-text">
@@ -407,8 +475,10 @@ export function ModelsPage() {
                 <div className="inline-actions">
                   <button
                     type="button"
+                    disabled={Boolean(pendingAction)}
                     onClick={async () => {
                       try {
+                        showPendingAction(`add unsloth ${item.filename}`);
                         const actionResult = await addUnslothModel(
                           item.repo,
                           item.filename,
@@ -425,6 +495,8 @@ export function ModelsPage() {
                             ? reason.message
                             : "Dodavanje Unsloth modela nije uspelo.",
                         );
+                      } finally {
+                        setPendingAction(null);
                       }
                     }}
                   >
@@ -436,7 +508,6 @@ export function ModelsPage() {
           ))}
         </div>
       </section>
-      <ActionResultPanel result={result} />
       <ModelGroup
         title="Kurirani modeli"
         groupKey="curated"

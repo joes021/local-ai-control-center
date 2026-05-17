@@ -15,6 +15,7 @@ class UiSourceSmokeTests(unittest.TestCase):
         self.assertIn("Collapse all", content)
         self.assertIn("Expand all", content)
         self.assertIn("Delete", content)
+        self.assertIn("Pokrecem model akciju", content)
         self.assertIn("Ukloni iz liste", content)
         self.assertIn("Obriši sa diska", content)
 
@@ -54,7 +55,9 @@ class UiSourceSmokeTests(unittest.TestCase):
         self.assertIn("UD-IQ3_XXS", content)
         self.assertNotIn("Koristi u HF formi", content)
         self.assertIn("Popuni repo i tacan GGUF filename", content)
-        self.assertIn("disabled={!hfRepo.trim() || !hfFilename.trim()}", content)
+        self.assertNotIn("disabled={!hfRepo.trim() || !hfFilename.trim()}", content)
+        self.assertNotIn("disabled={!unslothRepo.trim() || !unslothFilename.trim()}", content)
+        self.assertIn("action: \"pick-local-gguf\"", content)
 
 
 if __name__ == "__main__":
