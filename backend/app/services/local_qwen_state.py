@@ -10,8 +10,8 @@ from backend.app.services.local_qwen_paths import detect_local_qwen_home
 from backend.app.services.platform_config import get_target_platform
 
 
-def load_local_qwen_summary() -> dict[str, str]:
-    home = detect_local_qwen_home()
+def load_local_qwen_summary(home: Path | None = None) -> dict[str, str]:
+    home = home or detect_local_qwen_home()
     install_state = read_json_file(home / "state" / "install-state.json")
     settings = read_json_file(home / "state" / "settings.json")
     version = _read_version(home / "version.json")

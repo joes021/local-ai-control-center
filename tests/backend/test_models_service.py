@@ -1,10 +1,71 @@
 import unittest
+import uuid
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
 
 class ModelsServiceTests(unittest.TestCase):
+    def test_unsloth_non_mtp_model_is_classified_as_no_mtp(self):
+        from backend.app.services import models_service
+
+        status = models_service._classify_mtp_status(
+            source="unsloth",
+            model_id="unsloth-Qwen3.6-35B-A3B-UD-IQ2_M.gguf",
+            filename="Qwen3.6-35B-A3B-UD-IQ2_M.gguf",
+            raw={"source": "unsloth/Qwen3.6-35B-A3B-GGUF"},
+        )
+
+        self.assertEqual(status, "no-mtp")
+
+    def test_mtp_variant_is_classified_as_has_mtp(self):
+        from backend.app.services import models_service
+
+        status = models_service._classify_mtp_status(
+            source="unsloth",
+            model_id="unsloth-Qwen3.6-35B-A3B-MTP.gguf",
+            filename="Qwen3.6-35B-A3B-MTP.gguf",
+            raw={"source": "unsloth/Qwen3.6-35B-A3B-MTP-GGUF"},
+        )
+
+        self.assertEqual(status, "has-mtp")
+
+    def test_unsloth_27b_mtp_repo_is_classified_as_has_mtp(self):
+        from backend.app.services import models_service
+
+        status = models_service._classify_mtp_status(
+            source="unsloth",
+            model_id="unsloth-Qwen3.6-27B-MTP-UD-IQ3_S.gguf",
+            filename="Qwen3.6-27B-MTP-UD-IQ3_S.gguf",
+            raw={"repo": "unsloth/Qwen3.6-27B-MTP-GGUF"},
+        )
+
+        self.assertEqual(status, "has-mtp")
+
+    def test_unsloth_27b_non_mtp_repo_is_classified_as_no_mtp(self):
+        from backend.app.services import models_service
+
+        status = models_service._classify_mtp_status(
+            source="unsloth",
+            model_id="unsloth-Qwen3.6-27B-UD-IQ3_XXS.gguf",
+            filename="Qwen3.6-27B-UD-IQ3_XXS.gguf",
+            raw={"repo": "unsloth/Qwen3.6-27B-GGUF"},
+        )
+
+        self.assertEqual(status, "no-mtp")
+
+    def test_unknown_custom_model_is_classified_as_unknown(self):
+        from backend.app.services import models_service
+
+        status = models_service._classify_mtp_status(
+            source="local",
+            model_id="local-demo.gguf",
+            filename="demo.gguf",
+            raw={},
+        )
+
+        self.assertEqual(status, "unknown")
+
     def test_models_payload_groups_curated_local_hf_and_unsloth_models(self):
         from backend.app.services.models_service import normalize_models
 
@@ -112,6 +173,109 @@ class ModelsServiceTests(unittest.TestCase):
         self.assertNotIn("payload", result)
         self.assertIn("Unsloth model dodat", result["summary"])
         self.assertEqual(result["details"]["stdout"], "")
+
+    def test_windows_activate_model_refreshes_opencode_config(self):
+        from backend.app.services import models_service
+
+        responses = [
+            {
+                "status": "ok",
+                "action": "Set-SelectedModel",
+                "summary": "ok",
+                "details": {"returncode": 0, "stdout": "selected", "stderr": ""},
+                "payload": {"modelId": "demo.gguf"},
+            },
+            {
+                "status": "ok",
+                "action": "Update-OpenCodeConfig",
+                "summary": "ok",
+                "details": {"returncode": 0, "stdout": "OpenCode config: C:\\demo\\opencode.json", "stderr": ""},
+                "payload": "C:\\demo\\opencode.json",
+            },
+        ]
+
+        with (
+            mock.patch.dict("os.environ", {"CONTROL_CENTER_NEXT_TARGET_PLATFORM": "windows"}, clear=False),
+            mock.patch.object(models_service, "invoke_windows_common_json", side_effect=responses),
+        ):
+            result = models_service.activate_model("demo.gguf")
+
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("OpenCode config je osvezen", result["summary"])
+        self.assertIn("OpenCode config:", result["details"]["stdout"])
+
+    def test_load_download_progress_payload_reads_live_progress_file(self):
+        from backend.app.services import models_service
+
+        with TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            state_dir = home / "state"
+            state_dir.mkdir(parents=True)
+            (state_dir / "model-download-progress.json").write_text(
+                """
+{
+  "status": "downloading",
+  "modelId": "unsloth-demo.gguf",
+  "fileName": "demo.gguf",
+  "source": "unsloth/demo",
+  "downloadedGiB": 1.5,
+  "totalGiB": 10.0,
+  "speedMBps": 42.0,
+  "etaSeconds": 180,
+  "percent": 15.0,
+  "message": "Preuzimanje u toku",
+  "updatedAt": 1778982103.3022773
+}
+""".strip(),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(models_service, "detect_local_qwen_home", return_value=home):
+                payload = models_service.load_download_progress_payload()
+
+        self.assertEqual(payload["status"], "downloading")
+        self.assertTrue(payload["isActive"])
+        self.assertEqual(payload["modelId"], "unsloth-demo.gguf")
+        self.assertEqual(payload["percent"], 15.0)
+        self.assertEqual(payload["speedMBps"], 42.0)
+        self.assertEqual(payload["etaSeconds"], 180)
+
+    def test_load_download_progress_payload_returns_idle_without_file(self):
+        from backend.app.services import models_service
+
+        with TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            (home / "state").mkdir(parents=True)
+            with mock.patch.object(models_service, "detect_local_qwen_home", return_value=home):
+                payload = models_service.load_download_progress_payload()
+
+        self.assertEqual(payload["status"], "idle")
+        self.assertFalse(payload["isActive"])
+
+    def test_complete_model_action_updates_registry(self):
+        from backend.app.services import models_service
+
+        action_id = f"action-{uuid.uuid4()}"
+        with mock.patch.object(models_service, "_MODEL_ACTIONS", {}):
+            models_service._MODEL_ACTIONS[action_id] = {
+                "status": "pending",
+                "summary": "start",
+                "result": None,
+            }
+            models_service.complete_model_action(
+                action_id,
+                {
+                    "status": "ok",
+                    "action": "models",
+                    "summary": "zavrseno",
+                    "details": {"returncode": 0, "stdout": "", "stderr": ""},
+                },
+            )
+            payload = models_service.get_model_action_status(action_id)
+
+        self.assertEqual(payload["status"], "completed")
+        self.assertTrue(payload["isDone"])
+        self.assertEqual(payload["result"]["summary"], "zavrseno")
 
 
 if __name__ == "__main__":

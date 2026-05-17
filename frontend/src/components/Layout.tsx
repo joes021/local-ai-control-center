@@ -11,7 +11,7 @@ export function Layout({ title, subtitle, eyebrow, nav, children }: LayoutProps)
   return (
     <div className="app-shell">
       <header className="hero">
-        <p className="eyebrow">{eyebrow ?? "Local Qwen GUI Shell"}</p>
+        <p className="eyebrow">{eyebrow ?? "Local AI GUI Shell"}</p>
         <h1>{title}</h1>
         <div className="subtitle">{subtitle}</div>
       </header>

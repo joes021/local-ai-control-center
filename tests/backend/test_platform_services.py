@@ -53,22 +53,27 @@ class PlatformServicesTests(unittest.TestCase):
     def test_updates_service_uses_platform_launcher(self):
         from backend.app.services import updates_service
 
-        windows_payload = {"status": "ok", "action": "check-updates.ps1", "summary": "windows"}
+        release_info = {
+            "currentVersion": "2.10.2",
+            "latestVersion": "2.10.57",
+            "updateAvailable": True,
+            "releaseUrl": "https://example.test/release",
+        }
 
         with (
             mock.patch.dict("os.environ", {"CONTROL_CENTER_NEXT_TARGET_PLATFORM": "windows"}, clear=False),
             mock.patch.object(
                 updates_service,
-                "run_launcher_by_platform",
-                return_value=windows_payload,
-            ) as runner,
+                "load_update_release_info",
+                return_value=release_info,
+            ) as loader,
         ):
             result = updates_service.check_updates()
 
-        self.assertEqual(result, windows_payload)
-        runner.assert_called_once_with(
-            "check-updates.sh", "check-updates.ps1"
-        )
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["action"], "check-updates")
+        self.assertIn("Dostupna je novija verzija", result["summary"])
+        loader.assert_called_once_with()
 
 
 if __name__ == "__main__":

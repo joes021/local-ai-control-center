@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ActionResultPanel } from "../components/ActionResultPanel";
 import {
@@ -8,37 +8,117 @@ import {
   addUnslothModel,
   deleteModel,
   downloadModel,
+  fetchDownloadProgress,
+  fetchModelActionStatus,
   fetchModels,
   fetchTurboQuantSchema,
   pickLocalGguf,
 } from "../lib/api";
 import type {
   ActionResult,
+  DownloadProgressPayload,
   ModelEntry,
   ModelsPayload,
   RecommendedModel,
 } from "../lib/types";
 
 type GroupKey = "curated" | "local" | "huggingFace" | "unsloth";
-type ModelsFilter = "all" | "installed" | "active";
+type ModelsFilter = "all" | "installed" | "active" | "no-mtp" | "has-mtp" | "unknown-mtp";
 
-function isAbortLikeError(reason: unknown) {
-  return reason instanceof DOMException && reason.name === "AbortError";
+function formatGiB(value: number | null) {
+  if (value === null || Number.isNaN(value)) {
+    return "nepoznato";
+  }
+  return `${value.toFixed(2)} GiB`;
 }
 
-function ModelGroup({
-  title,
-  groupKey,
+function formatSpeed(value: number | null) {
+  if (value === null || Number.isNaN(value)) {
+    return "nepoznato";
+  }
+  return `${value.toFixed(1)} MB/s`;
+}
+
+function formatEta(seconds: number | null) {
+  if (seconds === null || seconds < 0) {
+    return "nepoznato";
+  }
+  if (seconds === 0) {
+    return "0s";
+  }
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  const parts: string[] = [];
+  if (hours) {
+    parts.push(`${hours}h`);
+  }
+  if (minutes) {
+    parts.push(`${minutes}m`);
+  }
+  if (secs && hours === 0) {
+    parts.push(`${secs}s`);
+  }
+  return parts.join(" ") || "0s";
+}
+
+function formatMiB(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "nepoznato";
+  }
+  return `${value} MiB`;
+}
+
+function DownloadProgressCard({ progress }: { progress: DownloadProgressPayload | null }) {
+  if (!progress) {
+    return null;
+  }
+
+  return (
+    <section className="status-card wide-card">
+      <div className="section-header">
+        <span className="status-label">Download status</span>
+        <strong className="status-value">{progress.status}</strong>
+      </div>
+      <div className="helper-text">
+        <strong>Model:</strong> {progress.modelId || progress.fileName || "nema aktivnog modela"}
+      </div>
+      <div className="helper-text">
+        <strong>Procenat:</strong>{" "}
+        {progress.percent === null ? "nepoznato" : `${progress.percent.toFixed(1)}%`}
+      </div>
+      <div className="helper-text">
+        <strong>Preuzeto:</strong> {formatGiB(progress.downloadedGiB)} / {formatGiB(progress.totalGiB)}
+      </div>
+      <div className="helper-text">
+        <strong>Brzina:</strong> {formatSpeed(progress.speedMBps)}
+      </div>
+      <div className="helper-text">
+        <strong>ETA:</strong> {formatEta(progress.etaSeconds)}
+      </div>
+      <div className="helper-text">
+        <strong>Poruka:</strong> {progress.message}
+      </div>
+      {progress.source ? (
+        <div className="helper-text">
+          <strong>Izvor:</strong> {progress.source}
+        </div>
+      ) : null}
+      <div className="helper-text">
+        <strong>Napomena:</strong> Add HF i Add Unsloth samo dodaju model u spisak. Pravo skidanje krece tek na{" "}
+        <strong>Download</strong>.
+      </div>
+    </section>
+  );
+}
+
+function FilterResultsCard({
+  filter,
   items,
-  collapsed,
-  onToggle,
   onChanged,
 }: {
-  title: string;
-  groupKey: GroupKey;
+  filter: ModelsFilter;
   items: ModelEntry[];
-  collapsed: boolean;
-  onToggle: (group: GroupKey) => void;
   onChanged: () => Promise<unknown>;
 }) {
   const [result, setResult] = useState<ActionResult | null>(null);
@@ -53,16 +133,20 @@ function ModelGroup({
       status: "pending",
       action: "models",
       summary: `Pokrecem model akciju: ${label}`,
-      details: {
-        returncode: 0,
-        stdout: "",
-        stderr: "",
-      },
+      details: { returncode: 0, stdout: "", stderr: "" },
     });
     try {
       const actionResult = await run();
       setResult(actionResult);
       await onChanged();
+    } catch (reason: unknown) {
+      const message = reason instanceof Error ? reason.message : "Model akcija nije uspela.";
+      setResult({
+        status: "error",
+        action: "models",
+        summary: message,
+        details: { returncode: 1, stdout: "", stderr: message },
+      });
     } finally {
       setPendingAction(null);
     }
@@ -71,26 +155,48 @@ function ModelGroup({
   return (
     <section className="status-card wide-card">
       <div className="section-header">
-        <span className="status-label">{title}</span>
-        <button type="button" className="secondary-button" onClick={() => onToggle(groupKey)}>
-          {collapsed ? "Expand" : "Collapse"}
-        </button>
+        <span className="status-label">Rezultati filtera</span>
+        <strong className="status-value">
+          {filter === "all"
+            ? "Svi modeli"
+            : filter === "installed"
+              ? "Skinuti modeli"
+              : filter === "active"
+                ? "Aktivni modeli"
+                : filter === "no-mtp"
+                  ? "Modeli bez MTP"
+                  : filter === "has-mtp"
+                    ? "Modeli sa MTP"
+                    : "Modeli sa nepoznatim MTP statusom"}
+        </strong>
       </div>
-      {!collapsed ? (
-        items.length ? (
+      {items.length ? (
         <div className="model-list">
           {items.map((item) => (
-            <article className="model-item" key={item.id}>
+            <article className="model-item" key={`filtered-${item.id}`}>
               <div className="model-item-header">
                 <div>
                   <strong>{item.label}</strong>
                   <div className="muted-line">
                     {item.active ? "Aktivan" : "Nije aktivan"} |{" "}
-                    {item.installed ? "Skinut" : "Nije skinut"} | {item.family ?? "Unknown"}
+                    {item.installed ? "Skinut" : "Nije skinut"} | {item.source}
                   </div>
                   <div className="muted-line">
                     ID: <code>{item.id}</code>
                   </div>
+                  <div className="helper-text">
+                    Velicina: {formatGiB(item.approxSizeGiB ?? null)} | Instalirano:{" "}
+                    {item.installed ? formatGiB(item.installedSizeGiB ?? null) : "nije skinut"}
+                  </div>
+                  <div className="helper-text">
+                    Potreban disk: {formatGiB(item.diskNeededGiB ?? null)} | Slobodan disk:{" "}
+                    {formatGiB(item.freeDiskGiB ?? null)}
+                  </div>
+                  <div className="helper-text">
+                    GPU prag: {formatMiB(item.minimumGpuMiB)} | Preporuceni GPU:{" "}
+                    {formatMiB(item.recommendedGpuMiB)} | RAM: {formatGiB(item.minimumRamGiB ?? null)}
+                  </div>
+                  <div className="helper-text">MTP status: {item.mtpStatusLabel ?? "nepoznato"}</div>
                   {item.description ? <p className="helper-text">{item.description}</p> : null}
                 </div>
                 <div className="inline-actions">
@@ -140,7 +246,7 @@ function ModelGroup({
                         checked={removeFile}
                         onChange={(event) => setRemoveFile(event.target.checked)}
                       />{" "}
-                      Obriši sa diska
+                      Obrisi sa diska
                     </label>
                     <button
                       type="button"
@@ -160,7 +266,7 @@ function ModelGroup({
                       className="secondary-button"
                       onClick={() => setDeleteTargetId(null)}
                     >
-                      Otkaži
+                      Otkazi
                     </button>
                   </div>
                 </div>
@@ -168,6 +274,178 @@ function ModelGroup({
             </article>
           ))}
         </div>
+      ) : (
+        <div className="helper-text">Nema modela za izabrani filter.</div>
+      )}
+      <ActionResultPanel result={result} />
+    </section>
+  );
+}
+
+function ModelGroup({
+  title,
+  groupKey,
+  items,
+  collapsed,
+  onToggle,
+  onChanged,
+}: {
+  title: string;
+  groupKey: GroupKey;
+  items: ModelEntry[];
+  collapsed: boolean;
+  onToggle: (group: GroupKey) => void;
+  onChanged: () => Promise<unknown>;
+}) {
+  const [result, setResult] = useState<ActionResult | null>(null);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [removeFile, setRemoveFile] = useState(true);
+  const [removeRegistry, setRemoveRegistry] = useState(true);
+
+  async function handleAction(label: string, run: () => Promise<ActionResult>) {
+    setPendingAction(label);
+    setResult({
+      status: "pending",
+      action: "models",
+      summary: `Pokrecem model akciju: ${label}`,
+      details: { returncode: 0, stdout: "", stderr: "" },
+    });
+    try {
+      const actionResult = await run();
+      setResult(actionResult);
+      await onChanged();
+    } catch (reason: unknown) {
+      const message = reason instanceof Error ? reason.message : "Model akcija nije uspela.";
+      setResult({
+        status: "error",
+        action: "models",
+        summary: message,
+        details: { returncode: 1, stdout: "", stderr: message },
+      });
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  return (
+    <section className="status-card wide-card">
+      <div className="section-header">
+        <span className="status-label">{title}</span>
+        <button type="button" className="secondary-button" onClick={() => onToggle(groupKey)}>
+          {collapsed ? "Expand" : "Collapse"}
+        </button>
+      </div>
+      {!collapsed ? (
+        items.length ? (
+          <div className="model-list">
+            {items.map((item) => (
+              <article className="model-item" key={item.id}>
+                <div className="model-item-header">
+                  <div>
+                    <strong>{item.label}</strong>
+                    <div className="muted-line">
+                      {item.active ? "Aktivan" : "Nije aktivan"} |{" "}
+                      {item.installed ? "Skinut" : "Nije skinut"} | {item.family ?? "Unknown"}
+                    </div>
+                  <div className="muted-line">
+                    ID: <code>{item.id}</code>
+                  </div>
+                  <div className="helper-text">
+                    Velicina: {formatGiB(item.approxSizeGiB ?? null)} | Instalirano:{" "}
+                    {item.installed ? formatGiB(item.installedSizeGiB ?? null) : "nije skinut"}
+                  </div>
+                  <div className="helper-text">
+                    Potreban disk: {formatGiB(item.diskNeededGiB ?? null)} | Slobodan disk:{" "}
+                    {formatGiB(item.freeDiskGiB ?? null)} | Dovoljno diska:{" "}
+                    {item.hasEnoughDisk === null || item.hasEnoughDisk === undefined
+                      ? "nepoznato"
+                      : item.hasEnoughDisk
+                        ? "da"
+                        : "ne"}
+                  </div>
+                  <div className="helper-text">
+                    GPU prag: {formatMiB(item.minimumGpuMiB)} | Preporuceni GPU:{" "}
+                    {formatMiB(item.recommendedGpuMiB)} | RAM: {formatGiB(item.minimumRamGiB ?? null)}
+                  </div>
+                  <div className="helper-text">MTP status: {item.mtpStatusLabel ?? "nepoznato"}</div>
+                  {item.description ? <p className="helper-text">{item.description}</p> : null}
+                </div>
+                  <div className="inline-actions">
+                    <button
+                      disabled={Boolean(pendingAction)}
+                      onClick={() => handleAction(`activate ${item.id}`, () => activateModel(item.id))}
+                      type="button"
+                    >
+                      Activate
+                    </button>
+                    <button
+                      disabled={Boolean(pendingAction)}
+                      onClick={() => handleAction(`download ${item.id}`, () => downloadModel(item.id))}
+                      type="button"
+                    >
+                      Download
+                    </button>
+                    <button
+                      className="danger-button"
+                      disabled={Boolean(pendingAction)}
+                      onClick={() => {
+                        setDeleteTargetId(item.id);
+                        setRemoveFile(true);
+                        setRemoveRegistry(Boolean(item.isCustom));
+                      }}
+                      type="button"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+                {deleteTargetId === item.id ? (
+                  <div className="helper-text">
+                    <strong>Potvrdi delete:</strong>
+                    <div className="inline-actions compact-actions">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={removeRegistry}
+                          onChange={(event) => setRemoveRegistry(event.target.checked)}
+                        />{" "}
+                        Ukloni iz liste
+                      </label>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={removeFile}
+                          onChange={(event) => setRemoveFile(event.target.checked)}
+                        />{" "}
+                        Obriši sa diska
+                      </label>
+                      <button
+                        type="button"
+                        className="danger-button"
+                        disabled={Boolean(pendingAction)}
+                        onClick={async () => {
+                          await handleAction(`delete ${item.id}`, () =>
+                            deleteModel(item.id, removeFile, removeRegistry),
+                          );
+                          setDeleteTargetId(null);
+                        }}
+                      >
+                        Potvrdi delete
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => setDeleteTargetId(null)}
+                      >
+                        Otkazi
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
         ) : (
           <div className="helper-text">Nema modela za izabrani filter u ovoj grupi.</div>
         )
@@ -190,6 +468,7 @@ export function ModelsPage() {
   const [result, setResult] = useState<ActionResult | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [recommendedModels, setRecommendedModels] = useState<RecommendedModel[]>([]);
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgressPayload | null>(null);
   const [modelsFilter, setModelsFilter] = useState<ModelsFilter>("all");
   const [collapsedGroups, setCollapsedGroups] = useState<Record<GroupKey, boolean>>({
     curated: false,
@@ -197,17 +476,14 @@ export function ModelsPage() {
     huggingFace: false,
     unsloth: false,
   });
+  const progressStatusRef = useRef<string>("idle");
 
   function showClientError(summary: string) {
     setResult({
       status: "error",
       action: "models-ui",
       summary,
-      details: {
-        returncode: 1,
-        stdout: "",
-        stderr: summary,
-      },
+      details: { returncode: 1, stdout: "", stderr: summary },
     });
   }
 
@@ -217,11 +493,7 @@ export function ModelsPage() {
       status: "pending",
       action: "models",
       summary: `Pokrecem model akciju: ${label}`,
-      details: {
-        returncode: 0,
-        stdout: "",
-        stderr: "",
-      },
+      details: { returncode: 0, stdout: "", stderr: "" },
     });
   }
 
@@ -239,9 +511,51 @@ export function ModelsPage() {
 
   useEffect(() => {
     void reloadModels();
+    void fetchDownloadProgress()
+      .then((payload) => {
+        setDownloadProgress(payload);
+        progressStatusRef.current = payload.status;
+      })
+      .catch(() => null);
     fetchTurboQuantSchema()
       .then((payload) => setRecommendedModels(payload.recommendedModels))
       .catch(() => setRecommendedModels([]));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function pollProgress() {
+      try {
+        const payload = await fetchDownloadProgress();
+        if (cancelled) {
+          return;
+        }
+        const previousStatus = progressStatusRef.current;
+        progressStatusRef.current = payload.status;
+        setDownloadProgress(payload);
+        if (
+          previousStatus !== payload.status &&
+          (payload.status === "completed" || payload.status === "already-installed" || payload.status === "error")
+        ) {
+          void reloadModels();
+        }
+      } catch {
+        if (!cancelled) {
+          setDownloadProgress(null);
+        }
+      }
+    }
+
+    void pollProgress();
+    const timer = window.setInterval(() => {
+      void pollProgress();
+    }, 1500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, []);
 
   const summary = useMemo(() => {
@@ -267,6 +581,15 @@ export function ModelsPage() {
       if (modelsFilter === "active") {
         return item.active;
       }
+      if (modelsFilter === "no-mtp") {
+        return item.mtpStatus === "no-mtp";
+      }
+      if (modelsFilter === "has-mtp") {
+        return item.mtpStatus === "has-mtp";
+      }
+      if (modelsFilter === "unknown-mtp") {
+        return item.mtpStatus === "unknown";
+      }
       return true;
     }
 
@@ -278,22 +601,63 @@ export function ModelsPage() {
     };
   }, [models, modelsFilter]);
 
-  const filteredSummary = useMemo(() => {
+  const filteredItems = useMemo(() => {
     if (!filteredModels) {
-      return { total: 0, installed: 0, active: 0 };
+      return [];
     }
-    const items = [
+    return [
       ...filteredModels.curated,
       ...filteredModels.local,
       ...filteredModels.huggingFace,
       ...filteredModels.unsloth,
     ];
-    return {
-      total: items.length,
-      installed: items.filter((item) => item.installed).length,
-      active: items.filter((item) => item.active).length,
-    };
   }, [filteredModels]);
+
+  const filteredSummary = useMemo(() => {
+    return {
+      total: filteredItems.length,
+      installed: filteredItems.filter((item) => item.installed).length,
+      active: filteredItems.filter((item) => item.active).length,
+    };
+  }, [filteredItems]);
+
+  async function runTopLevelAction(label: string, run: () => Promise<ActionResult>) {
+    try {
+      showPendingAction(label);
+      const actionResult = await run();
+      if (actionResult.status === "accepted" && actionResult.actionId) {
+        setResult(actionResult);
+        for (let attempt = 0; attempt < 30; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1000));
+          const statusPayload = await fetchModelActionStatus(actionResult.actionId);
+          if (statusPayload.result) {
+            setResult(statusPayload.result);
+          } else {
+            setResult({
+              status: statusPayload.status,
+              action: "models-action-status",
+              actionId: statusPayload.actionId,
+              summary: statusPayload.summary,
+              details: { returncode: 0, stdout: "", stderr: "" },
+            });
+          }
+          if (statusPayload.isDone) {
+            await reloadModels();
+            return;
+          }
+        }
+        showClientError("Model akcija nije zavrsena na vreme. Probaj refresh liste.");
+        return;
+      }
+
+      setResult(actionResult);
+      await reloadModels();
+    } catch (reason: unknown) {
+      showClientError(reason instanceof Error ? reason.message : "Model akcija nije uspela.");
+    } finally {
+      setPendingAction(null);
+    }
+  }
 
   if (error) {
     return <div className="error-panel">{error}</div>;
@@ -332,6 +696,27 @@ export function ModelsPage() {
             </button>
             <button
               type="button"
+              className={`secondary-button ${modelsFilter === "no-mtp" ? "nav-button-active" : ""}`}
+              onClick={() => setModelsFilter("no-mtp")}
+            >
+              Bez MTP
+            </button>
+            <button
+              type="button"
+              className={`secondary-button ${modelsFilter === "has-mtp" ? "nav-button-active" : ""}`}
+              onClick={() => setModelsFilter("has-mtp")}
+            >
+              Ima MTP
+            </button>
+            <button
+              type="button"
+              className={`secondary-button ${modelsFilter === "unknown-mtp" ? "nav-button-active" : ""}`}
+              onClick={() => setModelsFilter("unknown-mtp")}
+            >
+              Nepoznato MTP
+            </button>
+            <button
+              type="button"
               className="secondary-button"
               onClick={() =>
                 setCollapsedGroups({
@@ -361,7 +746,17 @@ export function ModelsPage() {
           </div>
         </div>
         <strong className="status-value">
-          Prikaz: {modelsFilter === "all" ? "Svi" : modelsFilter === "installed" ? "Skinuti" : "Aktivni"} |
+          Prikaz: {modelsFilter === "all"
+            ? "Svi"
+            : modelsFilter === "installed"
+              ? "Skinuti"
+              : modelsFilter === "active"
+                ? "Aktivni"
+                : modelsFilter === "no-mtp"
+                  ? "Bez MTP"
+                  : modelsFilter === "has-mtp"
+                    ? "Ima MTP"
+                    : "Nepoznato MTP"} |
           Ukupno: {filteredSummary.total} | Skinuto: {filteredSummary.installed} | Aktivno: {filteredSummary.active}
         </strong>
         {modelsFilter !== "all" ? (
@@ -369,10 +764,20 @@ export function ModelsPage() {
             Ukupno u katalogu: {summary.total} | Ukupno skinuto: {summary.installed}
           </p>
         ) : null}
+        <p className="helper-text">
+          Activate menja aktivni Local Qwen model odmah, ali OpenCode taj novi model preuzima tek
+          u novom session-u. Ako je OpenCode vec otvoren, zatvori ga i otvori ponovo.
+        </p>
       </section>
+
+        <FilterResultsCard filter={modelsFilter} items={filteredItems} onChanged={reloadModels} />
+      <DownloadProgressCard progress={downloadProgress} />
 
       <section className="status-card wide-card">
         <span className="status-label">Dodaj lokalni GGUF</span>
+        <p className="helper-text">
+          Dodavanje lokalnog GGUF-a odmah kopira fajl u model folder, pa nema posebnog Download koraka.
+        </p>
         <div className="form-grid">
           <input
             placeholder="/putanja/do/model.gguf"
@@ -390,11 +795,7 @@ export function ModelsPage() {
                     status: "ok",
                     action: "pick-local-gguf",
                     summary: payload.summary,
-                    details: {
-                      returncode: 0,
-                      stdout: payload.path,
-                      stderr: "",
-                    },
+                    details: { returncode: 0, stdout: payload.path, stderr: "" },
                   });
                 } else {
                   setResult({
@@ -421,42 +822,19 @@ export function ModelsPage() {
                 showClientError("Izaberi lokalni GGUF fajl pre dodavanja.");
                 return;
               }
-              try {
-                showPendingAction("add local");
-                const actionResult = await addLocalModel(localPath, "", "Custom");
-                setResult(actionResult);
-                await reloadModels();
-              } catch (reason: unknown) {
-                if (isAbortLikeError(reason)) {
-                  const refreshed = await reloadModels();
-                  const fileName = localPath.trim().split(/[\\/]/).pop() ?? "";
-                  const found = refreshed?.local.some((item) => item.filename === fileName);
-                  if (found) {
-                    setResult({
-                      status: "ok",
-                      action: "add-local-timeout-recovery",
-                      summary: `Lokalni model dodat: ${fileName}`,
-                      details: { returncode: 0, stdout: "", stderr: "" },
-                    });
-                  } else {
-                    showClientError("Dodavanje lokalnog modela jos nije potvrdjeno. Probaj refresh liste.");
-                  }
-                } else {
-                  showClientError(
-                    reason instanceof Error ? reason.message : "Dodavanje lokalnog modela nije uspelo.",
-                  );
-                }
-              } finally {
-                setPendingAction(null);
-              }
+              await runTopLevelAction("add local", () => addLocalModel(localPath.trim(), "", "Custom"));
             }}
           >
             Add local
           </button>
         </div>
       </section>
+
       <section className="status-card wide-card">
         <span className="status-label">Dodaj Unsloth model</span>
+        <p className="helper-text">
+          Ovaj korak samo dodaje model u spisak. Posle toga idi na <strong>Download</strong>.
+        </p>
         <div className="form-grid">
           <input
             placeholder="unsloth/Qwen3.6-35B-A3B-GGUF"
@@ -470,47 +848,15 @@ export function ModelsPage() {
           />
           <button
             type="button"
+            disabled={Boolean(pendingAction)}
             onClick={async () => {
               if (!unslothRepo.trim() || !unslothFilename.trim()) {
                 showClientError("Popuni Unsloth repo i tacan GGUF filename sa kvantizacijom.");
                 return;
               }
-              try {
-                showPendingAction("add unsloth");
-                const actionResult = await addUnslothModel(
-                  unslothRepo.trim(),
-                  unslothFilename.trim(),
-                  "",
-                  "Unsloth",
-                );
-                setResult(actionResult);
-                await reloadModels();
-              } catch (reason: unknown) {
-                if (isAbortLikeError(reason)) {
-                  const refreshed = await reloadModels();
-                  const found = refreshed?.unsloth.some(
-                    (item) => item.filename === unslothFilename.trim(),
-                  );
-                  if (found) {
-                    setResult({
-                      status: "ok",
-                      action: "add-unsloth-timeout-recovery",
-                      summary: `Unsloth model dodat: ${unslothFilename.trim()}`,
-                      details: { returncode: 0, stdout: "", stderr: "" },
-                    });
-                  } else {
-                    showClientError("Dodavanje Unsloth modela jos nije potvrdjeno. Probaj refresh liste.");
-                  }
-                } else {
-                  showClientError(
-                    reason instanceof Error
-                      ? reason.message
-                      : "Dodavanje Unsloth modela nije uspelo.",
-                  );
-                }
-              } finally {
-                setPendingAction(null);
-              }
+              await runTopLevelAction("add unsloth", () =>
+                addUnslothModel(unslothRepo.trim(), unslothFilename.trim(), "", "Unsloth"),
+              );
             }}
           >
             Add Unsloth
@@ -520,8 +866,12 @@ export function ModelsPage() {
           Unsloth je poseban izvor modela. Unesi tacan GGUF filename sa kvantizacijom.
         </p>
       </section>
+
       <section className="status-card wide-card">
         <span className="status-label">Dodaj Hugging Face model</span>
+        <p className="helper-text">
+          Ovaj korak samo dodaje model u spisak. Posle toga idi na <strong>Download</strong>.
+        </p>
         <div className="form-grid">
           <input
             placeholder="Qwen/Qwen3-0.6B-GGUF"
@@ -535,59 +885,34 @@ export function ModelsPage() {
           />
           <button
             type="button"
+            disabled={Boolean(pendingAction)}
             onClick={async () => {
               if (!hfRepo.trim() || !hfFilename.trim()) {
                 showClientError("Popuni repo i tacan GGUF filename sa kvantizacijom.");
                 return;
               }
-              try {
-                showPendingAction("add hf");
-                const actionResult = await addHfModel(hfRepo.trim(), hfFilename.trim(), "", "Custom");
-                setResult(actionResult);
-                await reloadModels();
-              } catch (reason: unknown) {
-                if (isAbortLikeError(reason)) {
-                  const refreshed = await reloadModels();
-                  const found = refreshed?.huggingFace.some(
-                    (item) => item.filename === hfFilename.trim(),
-                  );
-                  if (found) {
-                    setResult({
-                      status: "ok",
-                      action: "add-hf-timeout-recovery",
-                      summary: `HF model dodat: ${hfFilename.trim()}`,
-                      details: { returncode: 0, stdout: "", stderr: "" },
-                    });
-                  } else {
-                    showClientError("Dodavanje HF modela jos nije potvrdjeno. Probaj refresh liste.");
-                  }
-                } else {
-                  showClientError(
-                    reason instanceof Error ? reason.message : "Dodavanje HF modela nije uspelo.",
-                  );
-                }
-              } finally {
-                setPendingAction(null);
-              }
+              await runTopLevelAction("add hf", () =>
+                addHfModel(hfRepo.trim(), hfFilename.trim(), "", "Custom"),
+              );
             }}
           >
             Add HF
           </button>
         </div>
         <p className="helper-text">
-          Unesi tačan GGUF filename sa kvantizacijom, na primer{" "}
-          <code>Qwen3-0.6B-Q8_0.gguf</code>.
+          Unesi tacan GGUF filename sa kvantizacijom, na primer <code>Qwen3-0.6B-Q8_0.gguf</code>.
         </p>
       </section>
+
       <ActionResultPanel result={result} />
+
       <section className="status-card wide-card">
         <span className="status-label">Unsloth GGUF preporuke</span>
         <p className="helper-text">
           Ovo su preporuceni non-MTP izbori za RTX 3060 12 GB + llama.cpp + TurboQuant.
         </p>
         <p className="helper-text">
-          Fokus je na Qwen3.6 35B A3B i Qwen3.6 27B varijantama kao sto su UD-IQ2_M i
-          UD-IQ3_XXS.
+          Fokus je na Qwen3.6 35B A3B i Qwen3.6 27B varijantama kao sto su UD-IQ2_M i UD-IQ3_XXS.
         </p>
         <div className="model-list">
           {recommendedModels.map((item) => (
@@ -606,44 +931,11 @@ export function ModelsPage() {
                     type="button"
                     disabled={Boolean(pendingAction)}
                     onClick={async () => {
-                      try {
-                        showPendingAction(`add unsloth ${item.filename}`);
-                        const actionResult = await addUnslothModel(
-                          item.repo,
-                          item.filename,
-                          item.label,
-                          "Unsloth",
-                        );
-                        setResult(actionResult);
-                        setUnslothRepo(item.repo);
-                        setUnslothFilename(item.filename);
-                        await reloadModels();
-                      } catch (reason: unknown) {
-                        if (isAbortLikeError(reason)) {
-                          const refreshed = await reloadModels();
-                          const found = refreshed?.unsloth.some(
-                            (model) => model.filename === item.filename,
-                          );
-                          if (found) {
-                            setResult({
-                              status: "ok",
-                              action: "add-unsloth-timeout-recovery",
-                              summary: `Unsloth model dodat: ${item.filename}`,
-                              details: { returncode: 0, stdout: "", stderr: "" },
-                            });
-                          } else {
-                            showClientError("Dodavanje Unsloth modela jos nije potvrdjeno. Probaj refresh liste.");
-                          }
-                        } else {
-                          showClientError(
-                            reason instanceof Error
-                              ? reason.message
-                              : "Dodavanje Unsloth modela nije uspelo.",
-                          );
-                        }
-                      } finally {
-                        setPendingAction(null);
-                      }
+                      setUnslothRepo(item.repo);
+                      setUnslothFilename(item.filename);
+                      await runTopLevelAction(`add unsloth ${item.filename}`, () =>
+                        addUnslothModel(item.repo, item.filename, item.label, "Unsloth"),
+                      );
                     }}
                   >
                     Dodaj Unsloth model
@@ -654,6 +946,7 @@ export function ModelsPage() {
           ))}
         </div>
       </section>
+
       <ModelGroup
         title="Kurirani modeli"
         groupKey="curated"

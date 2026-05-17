@@ -3,23 +3,29 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.config import get_config
+from backend.app.routes.benchmark import router as benchmark_router
 from backend.app.routes.health import router as health_router
 from backend.app.routes.logs import router as logs_router
 from backend.app.routes.models import router as models_router
+from backend.app.routes.opencode import router as opencode_router
 from backend.app.routes.repair import router as repair_router
 from backend.app.routes.runtime import router as runtime_router
+from backend.app.routes.server import router as server_router
 from backend.app.routes.settings import router as settings_router
 from backend.app.routes.status import router as status_router
 from backend.app.routes.system import router as system_router
 from backend.app.routes.updates import router as updates_router
 
 
-app = FastAPI(title="Local Qwen Control Center Next Backend")
+app = FastAPI(title="Local AI Control Center Backend")
+app.include_router(benchmark_router)
 app.include_router(health_router)
 app.include_router(logs_router)
 app.include_router(models_router)
+app.include_router(opencode_router)
 app.include_router(repair_router)
 app.include_router(runtime_router)
+app.include_router(server_router)
 app.include_router(settings_router)
 app.include_router(status_router)
 app.include_router(system_router)

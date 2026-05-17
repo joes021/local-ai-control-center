@@ -2,18 +2,37 @@ import { useEffect, useState } from "react";
 
 import { ActionResultPanel } from "../components/ActionResultPanel";
 import { StatusCard } from "../components/StatusCard";
-import { fetchStatus, selectRuntime } from "../lib/api";
-import type { ActionResult, StatusPayload } from "../lib/types";
+import {
+  fetchOpenCodeStatus,
+  fetchServerStatus,
+  fetchStatus,
+  openOpenCode,
+  selectRuntime,
+} from "../lib/api";
+import type {
+  ActionResult,
+  OpenCodeStatusPayload,
+  ServerStatusPayload,
+  StatusPayload,
+} from "../lib/types";
 
 export function HomePage() {
   const [status, setStatus] = useState<StatusPayload | null>(null);
+  const [serverStatus, setServerStatus] = useState<ServerStatusPayload | null>(null);
+  const [opencode, setOpencode] = useState<OpenCodeStatusPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ActionResult | null>(null);
 
   async function loadStatus() {
     try {
-      const payload = await fetchStatus();
-      setStatus(payload);
+      const [statusPayload, serverPayload, opencodePayload] = await Promise.all([
+        fetchStatus(),
+        fetchServerStatus(),
+        fetchOpenCodeStatus(),
+      ]);
+      setStatus(statusPayload);
+      setServerStatus(serverPayload);
+      setOpencode(opencodePayload);
       setError(null);
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "Nepoznata greska");
@@ -23,10 +42,12 @@ export function HomePage() {
   useEffect(() => {
     let active = true;
 
-    fetchStatus()
-      .then((payload) => {
+    Promise.all([fetchStatus(), fetchServerStatus(), fetchOpenCodeStatus()])
+      .then(([payload, serverPayload, opencodePayload]) => {
         if (active) {
           setStatus(payload);
+          setServerStatus(serverPayload);
+          setOpencode(opencodePayload);
         }
       })
       .catch((reason: unknown) => {
@@ -47,6 +68,9 @@ export function HomePage() {
       <StatusCard label="Health" value={status?.health ?? "--"} />
       <StatusCard label="Aktivni model" value={status?.activeModel ?? "--"} />
       <StatusCard label="Profil" value={status?.profile ?? "--"} />
+      <StatusCard label="Server status" value={serverStatus?.status ?? "--"} />
+      <StatusCard label="Server health" value={serverStatus?.health ?? "--"} />
+      <StatusCard label="Server port" value={serverStatus ? String(serverStatus.port) : "--"} />
       <StatusCard label="Aktivan runtime" value={status?.activeRuntimeLabel ?? "--"} />
       <StatusCard
         label="Dostupni runtime-i"
@@ -54,8 +78,38 @@ export function HomePage() {
       />
       <StatusCard label="TurboQuant status" value={status?.turboQuantStatus ?? "--"} />
       <StatusCard label="Status runtime servera" value={status?.runtimeLiveStatus ?? "--"} />
+      <section className="status-card">
+        <span className="status-label">OpenCode</span>
+        <strong className="status-value">
+          {opencode?.available ? "Dostupan" : "Nije dostupan"}
+        </strong>
+        <p className="helper-text">
+          Promena modela vazi za novi OpenCode session. Vec otvoren OpenCode prozor ne menja
+          model usred sesije.
+        </p>
+        <div className="inline-actions">
+          <button
+            type="button"
+            onClick={async () => {
+              const actionResult = await openOpenCode(status?.profile || opencode?.profile || "balanced");
+              setResult(actionResult);
+              await loadStatus();
+            }}
+          >
+            Open OpenCode
+          </button>
+        </div>
+      </section>
       <StatusCard label="Port" value={status ? String(status.uiPort) : "--"} />
       <StatusCard label="Access mode" value={status?.accessMode ?? "--"} />
+      <section className="status-card wide-card">
+        <span className="status-label">Server summary</span>
+        <strong className="status-value">{serverStatus?.lastReason || "Ucitavam server lifecycle status..."}</strong>
+        <p className="helper-text">
+          Status: {serverStatus?.status || "--"} | Health: {serverStatus?.health || "--"} | Port:{" "}
+          {serverStatus ? String(serverStatus.port) : "--"} | Runtime: {serverStatus?.activeRuntimeLabel || "--"}
+        </p>
+      </section>
       <section className="status-card wide-card">
         <span className="status-label">Runtime summary</span>
         <strong className="status-value">
@@ -113,6 +167,26 @@ export function HomePage() {
         <strong className="status-value">
           {status?.tailscaleUrl || "Tailscale nije aktivan ili UI nije izlozen kroz Tailscale."}
         </strong>
+      </section>
+      <section className="status-card wide-card">
+        <span className="status-label">OpenCode</span>
+        <strong className="status-value">
+          {opencode?.available ? "Dostupan" : "Nije dostupan"}
+        </strong>
+        <p className="helper-text">
+          OpenCode config: {opencode?.configPath || "nije pronadjen"}
+        </p>
+        <p className="helper-text">
+          Security mode: {opencode?.securityMode || "--"} | Capability mode:{" "}
+          {opencode?.capabilityMode || "--"}
+        </p>
+        <p className="helper-text">
+          Audit: {opencode?.auditSummary || "Nema dodatnih OpenCode detalja."}
+        </p>
+        <p className="helper-text">
+          Ako promenis aktivni model u Control Center-u, zatvori i otvori OpenCode ponovo da bi
+          novi session preuzeo taj model.
+        </p>
       </section>
       <ActionResultPanel result={result} />
     </>

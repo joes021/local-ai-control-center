@@ -18,7 +18,7 @@ cat >"$ENTRY_PATH" <<EOF
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Local Qwen Control Center Next
+Name=Local AI Control Center
 Comment=Pokreni novi Local Qwen web control centar
 Exec=$ROOT/launchers/linux/start-control-center-next.sh
 Terminal=false

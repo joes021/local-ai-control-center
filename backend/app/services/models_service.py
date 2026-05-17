@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
+import uuid
 from pathlib import Path
 
 from backend.app.services.local_qwen_paths import detect_local_qwen_home
@@ -14,6 +18,15 @@ from backend.app.services.settings_service import (
     load_model_override_payload,
 )
 from backend.app.services.windows_common_runner import invoke_windows_common_json
+
+
+_MODEL_ACTIONS: dict[str, dict[str, object]] = {}
+_UNSLOTH_MTP_REPO_STATUS = {
+    "unsloth/qwen3.6-35b-a3b-gguf": "no-mtp",
+    "unsloth/qwen3.6-35b-a3b-mtp-gguf": "has-mtp",
+    "unsloth/qwen3.6-27b-gguf": "no-mtp",
+    "unsloth/qwen3.6-27b-mtp-gguf": "has-mtp",
+}
 
 
 def load_models_payload() -> dict[str, list[dict[str, object]]]:
@@ -138,6 +151,44 @@ def download_model(model_id: str) -> dict[str, object]:
     return run_linux_launcher("manage-models.sh", "download", model_id)
 
 
+def load_download_progress_payload() -> dict[str, object]:
+    home = detect_local_qwen_home()
+    path = home / "state" / "model-download-progress.json"
+    if not path.is_file():
+        return {
+            "status": "idle",
+            "isActive": False,
+            "modelId": "",
+            "fileName": "",
+            "source": "",
+            "percent": None,
+            "downloadedGiB": None,
+            "totalGiB": None,
+            "speedMBps": None,
+            "etaSeconds": None,
+            "message": "Nema aktivnog download-a.",
+            "updatedAt": "",
+        }
+
+    payload = read_json_file(path)
+    status = str(payload.get("status", "") or "idle")
+    message = str(payload.get("message", "") or "").strip()
+    return {
+        "status": status,
+        "isActive": status in {"starting", "downloading"},
+        "modelId": str(payload.get("modelId", "") or ""),
+        "fileName": str(payload.get("fileName", "") or ""),
+        "source": str(payload.get("source", "") or ""),
+        "percent": _as_float(payload.get("percent")),
+        "downloadedGiB": _as_float(payload.get("downloadedGiB")),
+        "totalGiB": _as_float(payload.get("totalGiB")),
+        "speedMBps": _as_float(payload.get("speedMBps")),
+        "etaSeconds": _as_int(payload.get("etaSeconds")),
+        "message": message or _default_progress_message(status),
+        "updatedAt": str(payload.get("updatedAt", "") or ""),
+    }
+
+
 def add_local_model(path: str, label: str = "", family: str = "Custom") -> dict[str, object]:
     if get_target_platform() == "windows":
         result = invoke_windows_common_json("Import-LocalGgufModel", path, label, family)
@@ -178,7 +229,7 @@ def add_hf_model(
             return {
                 "status": "ok",
                 "action": "Add-HuggingFaceCustomModel",
-                "summary": f"HF model dodat: {model_id or filename}",
+                "summary": f"HF model dodat u spisak: {model_id or filename}. Sledeci korak je Download.",
                 "details": {
                     "returncode": 0,
                     "stdout": "",
@@ -209,7 +260,7 @@ def add_unsloth_model(
             return {
                 "status": "ok",
                 "action": "Add-UnslothCustomModel",
-                "summary": f"Unsloth model dodat: {model_id or filename}",
+                "summary": f"Unsloth model dodat u spisak: {model_id or filename}. Sledeci korak je Download.",
                 "details": {
                     "returncode": 0,
                     "stdout": "",
@@ -224,6 +275,88 @@ def add_unsloth_model(
     if family:
         args.append(family)
     return run_linux_launcher("manage-models.sh", *args)
+
+
+def start_model_action(kind: str, **kwargs: str) -> dict[str, object]:
+    action_id = f"model-action-{uuid.uuid4()}"
+    summary = {
+        "add-local": "Dodavanje lokalnog modela je pokrenuto.",
+        "add-hf": "Dodavanje Hugging Face modela je pokrenuto.",
+        "add-unsloth": "Dodavanje Unsloth modela je pokrenuto.",
+    }.get(kind, "Model akcija je pokrenuta.")
+
+    _MODEL_ACTIONS[action_id] = {
+        "status": "pending",
+        "summary": summary,
+        "result": None,
+    }
+    _write_model_action_status_file(
+        action_id,
+        {
+            "actionId": action_id,
+            "status": "pending",
+            "summary": summary,
+            "isDone": False,
+            "result": None,
+        },
+    )
+    _spawn_model_action_worker(action_id, kind, kwargs)
+    return {
+        "status": "accepted",
+        "action": kind,
+        "actionId": action_id,
+        "summary": summary,
+        "details": {"returncode": 0, "stdout": "", "stderr": ""},
+    }
+
+
+def get_model_action_status(action_id: str) -> dict[str, object]:
+    file_payload = read_json_file(_get_model_action_status_path(action_id))
+    if file_payload:
+        return {
+            "actionId": action_id,
+            "status": str(file_payload.get("status", "pending") or "pending"),
+            "summary": str(file_payload.get("summary", "") or ""),
+            "isDone": bool(file_payload.get("isDone", False)),
+            "result": file_payload.get("result"),
+        }
+
+    payload = dict(_MODEL_ACTIONS.get(action_id) or {})
+    if not payload:
+        return {
+            "actionId": action_id,
+            "status": "missing",
+            "summary": "Model akcija nije pronadjena.",
+            "isDone": True,
+            "result": None,
+        }
+    status = str(payload.get("status", "pending") or "pending")
+    return {
+        "actionId": action_id,
+        "status": status,
+        "summary": str(payload.get("summary", "") or ""),
+        "isDone": status in {"completed", "error"},
+        "result": payload.get("result"),
+    }
+
+
+def complete_model_action(action_id: str, result: dict[str, object]) -> None:
+    status = "completed" if result.get("status") == "ok" else "error"
+    _MODEL_ACTIONS[action_id] = {
+        "status": status,
+        "summary": str(result.get("summary", "") or ""),
+        "result": result,
+    }
+    _write_model_action_status_file(
+        action_id,
+        {
+            "actionId": action_id,
+            "status": status,
+            "summary": str(result.get("summary", "") or ""),
+            "isDone": True,
+            "result": result,
+        },
+    )
 
 
 def delete_model(
@@ -318,7 +451,26 @@ def _build_model_entry(
 ) -> dict[str, object]:
     filename = str(raw.get("filename", "") or "")
     model_id = str(raw.get("id", filename) or filename)
-    installed = bool(filename and (models_dir / filename).is_file())
+    mtp_status = _classify_mtp_status(
+        source=source,
+        model_id=model_id,
+        filename=filename,
+        raw=raw,
+    )
+    target_path = models_dir / filename if filename else None
+    installed = bool(target_path and target_path.is_file())
+    installed_size_bytes = target_path.stat().st_size if installed and target_path else 0
+    approx_size_gib = _as_float(raw.get("approxSizeGiB"))
+    installed_size_gib = round(installed_size_bytes / (1024 ** 3), 2) if installed_size_bytes > 0 else None
+    free_disk_gib = _get_free_disk_gib(models_dir)
+    min_expected_bytes = _as_int(raw.get("minExpectedBytes")) or 0
+    approx_size_bytes = int((approx_size_gib or 0) * (1024 ** 3))
+    if min_expected_bytes > 0:
+        disk_needed_bytes = max(0, min_expected_bytes - installed_size_bytes)
+    else:
+        disk_needed_bytes = max(0, approx_size_bytes - installed_size_bytes)
+    disk_needed_gib = round(disk_needed_bytes / (1024 ** 3), 2) if disk_needed_bytes > 0 else 0.0
+    has_enough_disk = None if free_disk_gib is None else free_disk_gib >= disk_needed_gib
     return {
         "id": model_id,
         "label": str(raw.get("label", model_id) or model_id),
@@ -329,7 +481,54 @@ def _build_model_entry(
         "family": str(raw.get("family", "Unknown")),
         "description": str(raw.get("description", "")),
         "isCustom": source in {"local", "huggingface", "unsloth"},
+        "mtpStatus": mtp_status,
+        "mtpStatusLabel": _get_mtp_status_label(mtp_status),
+        "approxSizeGiB": approx_size_gib,
+        "minimumGpuMiB": _as_int(raw.get("minimumGpuMiB")),
+        "recommendedGpuMiB": _as_int(raw.get("recommendedGpuMiB")),
+        "minimumRamGiB": _as_int(raw.get("minimumRamGiB")),
+        "installedSizeGiB": installed_size_gib,
+        "diskNeededGiB": disk_needed_gib,
+        "freeDiskGiB": free_disk_gib,
+        "hasEnoughDisk": has_enough_disk,
     }
+
+
+def _classify_mtp_status(*, source: str, model_id: str, filename: str, raw: dict[str, object]) -> str:
+    explicit = str(raw.get("mtpStatus", "") or "").strip().lower()
+    if explicit in {"no-mtp", "has-mtp", "unknown"}:
+        return explicit
+
+    repo = str(raw.get("repo", "") or raw.get("source", "") or "").strip().lower()
+    if repo in _UNSLOTH_MTP_REPO_STATUS:
+        return _UNSLOTH_MTP_REPO_STATUS[repo]
+
+    joined = " ".join(
+        [
+            source or "",
+            model_id or "",
+            filename or "",
+            repo,
+            str(raw.get("description", "") or ""),
+            str(raw.get("customSource", "") or ""),
+        ]
+    ).lower()
+
+    if "mtp-gguf" in joined or "-mtp" in joined or " mtp" in joined:
+        return "has-mtp"
+
+    if source == "unsloth" and "mtp-gguf" not in joined:
+        return "no-mtp"
+
+    return "unknown"
+
+
+def _get_mtp_status_label(status: str) -> str:
+    return {
+        "no-mtp": "bez MTP",
+        "has-mtp": "ima MTP",
+        "unknown": "nepoznato",
+    }.get(status, "nepoznato")
 
 
 def _ensure_unsloth_registered(model_id: str) -> dict[str, object] | None:
@@ -390,21 +589,209 @@ def _activate_model_windows(model_id: str) -> dict[str, object]:
     result = invoke_windows_common_json("Set-SelectedModel", model_id)
     if result.get("status") != "ok":
         return result
+    config_refresh = invoke_windows_common_json("Update-OpenCodeConfig")
+    if config_refresh.get("status") != "ok":
+        return {
+            "status": "error",
+            "action": "Set-SelectedModel",
+            "summary": f"Model jeste promenjen na {model_id}, ali OpenCode config nije osvezen.",
+            "details": config_refresh["details"],
+        }
     return {
         "status": "ok",
         "action": "Set-SelectedModel",
-        "summary": f"Model postavljen na: {model_id}",
-        "details": result["details"],
+        "summary": f"Model postavljen na: {model_id}. OpenCode config je osvezen za novi session.",
+        "details": {
+            "returncode": 0,
+            "stdout": "\n".join(
+                part
+                for part in [
+                    str(result["details"].get("stdout", "") or "").strip(),
+                    str(config_refresh["details"].get("stdout", "") or "").strip(),
+                ]
+                if part
+            ),
+            "stderr": "",
+        },
     }
 
 
 def _download_model_windows(model_id: str) -> dict[str, object]:
-    result = invoke_windows_common_json("Download-RecommendedModel", model_id)
-    if result.get("status") != "ok":
-        return result
+    script_path = _resolve_windows_manage_models_script()
+    if not script_path.is_file():
+        return _result("error", "download-model", f"Windows manage-models skripta nije pronadjena: {script_path}")
+
+    home = detect_local_qwen_home()
+    progress_path = home / "state" / "model-download-progress.json"
+    progress_path.parent.mkdir(parents=True, exist_ok=True)
+    progress_path.write_text(
+        json.dumps(
+            {
+                "status": "starting",
+                "modelId": model_id,
+                "fileName": "",
+                "source": "",
+                "percent": 0.0,
+                "downloadedGiB": 0.0,
+                "totalGiB": None,
+                "speedMBps": None,
+                "etaSeconds": None,
+                "message": f"Pokrecem download za {model_id}",
+                "updatedAt": "",
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    creation_flags = 0
+    if os.name == "nt":
+        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+    process = subprocess.Popen(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script_path),
+            "-ModelId",
+            model_id,
+            "-Download",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+        creationflags=creation_flags,
+        close_fds=False,
+    )
     return {
         "status": "ok",
-        "action": "Download-RecommendedModel",
-        "summary": f"Model download pokrenut za: {model_id}",
-        "details": result["details"],
+        "action": "download-model",
+        "summary": f"Download je pokrenut za: {model_id}",
+        "details": {
+            "returncode": 0,
+            "stdout": json.dumps({"pid": process.pid, "progressPath": str(progress_path)}, ensure_ascii=False),
+            "stderr": "",
+        },
     }
+
+
+def _resolve_windows_manage_models_script() -> Path:
+    installed = detect_local_qwen_home() / "launchers" / "manage-models.ps1"
+    if installed.is_file():
+        return installed
+    return Path(r"C:\Users\AzdahaI9\Documents\Local Qwen 3.635Ba3B on home computer\launcher\windows\manage-models.ps1")
+
+
+def _as_float(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_int(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _default_progress_message(status: str) -> str:
+    return {
+        "starting": "Download se priprema.",
+        "downloading": "Download je u toku.",
+        "completed": "Download je zavrsen.",
+        "error": "Download je prijavio gresku.",
+    }.get(status, "Nema aktivnog download-a.")
+
+
+def _run_model_action_worker(action_id: str, kind: str, kwargs: dict[str, str]) -> None:
+    try:
+        if kind == "add-local":
+            result = add_local_model(
+                kwargs.get("path", ""),
+                kwargs.get("label", ""),
+                kwargs.get("family", "Custom"),
+            )
+        elif kind == "add-hf":
+            result = add_hf_model(
+                kwargs.get("repo", ""),
+                kwargs.get("filename", ""),
+                kwargs.get("label", ""),
+                kwargs.get("family", "Custom"),
+            )
+        elif kind == "add-unsloth":
+            result = add_unsloth_model(
+                kwargs.get("repo", ""),
+                kwargs.get("filename", ""),
+                kwargs.get("label", ""),
+                kwargs.get("family", "Unsloth"),
+            )
+        else:
+            result = _result("error", kind, f"Nepoznata model akcija: {kind}")
+    except Exception as exc:  # noqa: BLE001
+        result = _result("error", kind, str(exc))
+
+    complete_model_action(action_id, result)
+
+
+def _get_model_action_status_path(action_id: str) -> Path:
+    home = detect_local_qwen_home()
+    directory = home / "state" / "control-center-next" / "model-actions"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory / f"{action_id}.json"
+
+
+def _write_model_action_status_file(action_id: str, payload: dict[str, object]) -> None:
+    _get_model_action_status_path(action_id).write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _spawn_model_action_worker(action_id: str, kind: str, kwargs: dict[str, str]) -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    worker_path = repo_root / "backend" / "app" / "workers" / "model_action_worker.py"
+    args_payload = json.dumps(kwargs, ensure_ascii=False)
+
+    creation_flags = 0
+    if os.name == "nt":
+        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            str(worker_path),
+            "--action-id",
+            action_id,
+            "--kind",
+            kind,
+            "--kwargs-json",
+            args_payload,
+        ],
+        cwd=str(repo_root),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+        creationflags=creation_flags,
+        close_fds=False,
+    )
+    _MODEL_ACTIONS[action_id]["workerPid"] = process.pid
+
+
+def _get_free_disk_gib(models_dir: Path) -> float | None:
+    try:
+        import shutil
+
+        usage = shutil.disk_usage(models_dir)
+        return round(usage.free / (1024 ** 3), 2)
+    except Exception:  # noqa: BLE001
+        return None

@@ -1,17 +1,22 @@
 import { useEffect, useState } from "react";
 
 import { ActionResultPanel } from "../components/ActionResultPanel";
+import { CustomSelect } from "../components/CustomSelect";
 import {
+  applyOpenCodeSettings,
   applySettings,
   deleteTurboQuantPreset,
+  fetchOpenCodeStatus,
   fetchSettings,
   fetchTurboQuantSchema,
+  openOpenCode,
   pickWorkingDirectory,
   saveTurboQuantConfig,
   saveTurboQuantPreset,
 } from "../lib/api";
 import type {
   ActionResult,
+  OpenCodeStatusPayload,
   SettingsPayload,
   TurboQuantConfig,
   TurboQuantPreset,
@@ -24,6 +29,7 @@ function applyPresetToConfig(preset: TurboQuantPreset): TurboQuantConfig {
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
+  const [opencode, setOpencode] = useState<OpenCodeStatusPayload | null>(null);
   const [schema, setSchema] = useState<TurboQuantSchemaPayload | null>(null);
   const [turboConfig, setTurboConfig] = useState<TurboQuantConfig | null>(null);
   const [presetName, setPresetName] = useState("");
@@ -34,13 +40,15 @@ export function SettingsPage() {
   const [result, setResult] = useState<ActionResult | null>(null);
 
   async function reload() {
-    const [settingsPayload, schemaPayload] = await Promise.all([
+    const [settingsPayload, schemaPayload, opencodePayload] = await Promise.all([
       fetchSettings(),
       fetchTurboQuantSchema(),
+      fetchOpenCodeStatus(),
     ]);
     setSettings(settingsPayload);
     setSchema(schemaPayload);
     setTurboConfig(schemaPayload.currentConfig);
+    setOpencode(opencodePayload);
   }
 
   useEffect(() => {
@@ -53,7 +61,7 @@ export function SettingsPage() {
     return <div className="error-panel">{error}</div>;
   }
 
-  if (!settings || !schema || !turboConfig) {
+  if (!settings || !schema || !turboConfig || !opencode) {
     return <div className="status-card wide-card">Ucitavam settings...</div>;
   }
 
@@ -70,18 +78,20 @@ export function SettingsPage() {
           Global defaults vaze za sve modele bez posebnog override-a. Active model override vazi
           samo za trenutno aktivni model.
         </p>
-        <select
+        <CustomSelect
           value={settings.settingsScope}
-          onChange={(event) =>
+          options={[
+            { value: "global", label: "Global defaults" },
+            { value: "model", label: "Active model override" },
+          ]}
+          onChange={(value) =>
             setSettings({
               ...settings,
-              settingsScope: event.target.value,
+              settingsScope: value,
             })
           }
-        >
-          <option value="global">Global defaults</option>
-          <option value="model">Active model override</option>
-        </select>
+          ariaLabel="Izaberi settings scope"
+        />
         <p className="helper-text">
           {settings.modelOverrideExists
             ? "Za aktivni model vec postoji poseban override."
@@ -91,18 +101,20 @@ export function SettingsPage() {
 
       <section className="status-card">
         <span className="status-label">Access mode</span>
-        <select
+        <CustomSelect
           value={settings.accessMode}
-          onChange={(event) =>
+          options={[
+            { value: "local-only", label: "Local only" },
+            { value: "tailscale", label: "Tailscale" },
+          ]}
+          onChange={(value) =>
             setSettings({
               ...settings,
-              accessMode: event.target.value,
+              accessMode: value,
             })
           }
-        >
-          <option value="local-only">Local only</option>
-          <option value="tailscale">Tailscale</option>
-        </select>
+          ariaLabel="Izaberi access mode"
+        />
         <p className="helper-text">
           Tailscale rezim podize backend tako da moze da se otvori i preko Tailscale adrese.
         </p>
@@ -110,37 +122,41 @@ export function SettingsPage() {
 
       <section className="status-card">
         <span className="status-label">Profil</span>
-        <select
+        <CustomSelect
           value={settings.profile}
-          onChange={(event) =>
+          options={[
+            { value: "speed", label: "speed" },
+            { value: "balanced", label: "balanced" },
+            { value: "video", label: "video" },
+          ]}
+          onChange={(value) =>
             setSettings({
               ...settings,
-              profile: event.target.value,
+              profile: value,
             })
           }
-        >
-          <option value="speed">speed</option>
-          <option value="balanced">balanced</option>
-          <option value="video">video</option>
-        </select>
+          ariaLabel="Izaberi profil"
+        />
       </section>
       <section className="status-card">
         <span className="status-label">Thinking mode</span>
-        <select
+        <CustomSelect
           value={settings.thinkingMode}
-          onChange={(event) =>
+          options={[
+            { value: "no-thinking", label: "No thinking" },
+            { value: "low", label: "Low" },
+            { value: "mid", label: "Mid" },
+            { value: "high", label: "High" },
+            { value: "extra-high", label: "Extra high" },
+          ]}
+          onChange={(value) =>
             setSettings({
               ...settings,
-              thinkingMode: event.target.value,
+              thinkingMode: value,
             })
           }
-        >
-          <option value="no-thinking">No thinking</option>
-          <option value="low">Low</option>
-          <option value="mid">Mid</option>
-          <option value="high">High</option>
-          <option value="extra-high">Extra high</option>
-        </select>
+          ariaLabel="Izaberi thinking mode"
+        />
       </section>
       <section className="status-card">
         <span className="status-label">Context</span>
@@ -203,6 +219,87 @@ export function SettingsPage() {
           Build {settings.buildSteps} | Plan {settings.planSteps} | General{" "}
           {settings.generalSteps} | Explore {settings.exploreSteps}
         </strong>
+      </section>
+
+      <section className="status-card wide-card">
+        <span className="status-label">OpenCode config</span>
+        <strong className="status-value">
+          {opencode.available ? "OpenCode je dostupan" : "OpenCode nije dostupan"}
+        </strong>
+        <p className="helper-text">Executable: {opencode.executablePath || "nije pronadjen"}</p>
+        <p className="helper-text">OpenCode config: {opencode.configPath || "nije pronadjen"}</p>
+        <p className="helper-text">Risk audit: {opencode.auditSummary || "nema sacuvanog audita"}</p>
+        <div className="form-grid">
+          <label>
+            Security mode
+            <CustomSelect
+              value={opencode.securityMode}
+              options={[
+                { value: "strict", label: "strict" },
+                { value: "workspace-write", label: "workspace-write" },
+                { value: "open", label: "open" },
+              ]}
+              onChange={(value) =>
+                setOpencode({
+                  ...opencode,
+                  securityMode: value,
+                })
+              }
+              ariaLabel="Izaberi OpenCode security mode"
+            />
+          </label>
+          <label>
+            Capability mode
+            <CustomSelect
+              value={opencode.capabilityMode}
+              options={[
+                { value: "read-only", label: "read-only" },
+                { value: "read-write", label: "read-write" },
+                { value: "confirm-commands", label: "confirm-commands" },
+                { value: "auto-commands", label: "auto-commands" },
+              ]}
+              onChange={(value) =>
+                setOpencode({
+                  ...opencode,
+                  capabilityMode: value,
+                })
+              }
+              ariaLabel="Izaberi OpenCode capability mode"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={async () => {
+              const actionResult = await applyOpenCodeSettings({
+                profile: settings.profile,
+                context: settings.context,
+                outputTokens: settings.outputTokens,
+                workingDirectory: settings.workingDirectory,
+                buildSteps: settings.buildSteps,
+                planSteps: settings.planSteps,
+                generalSteps: settings.generalSteps,
+                exploreSteps: settings.exploreSteps,
+                securityMode: opencode.securityMode,
+                capabilityMode: opencode.capabilityMode,
+              });
+              setResult(actionResult);
+              await reload();
+            }}
+          >
+            Save OpenCode settings
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={async () => {
+              const actionResult = await openOpenCode(settings.profile);
+              setResult(actionResult);
+              await reload();
+            }}
+          >
+            Open OpenCode
+          </button>
+        </div>
       </section>
 
       <section className="status-card wide-card">
@@ -350,21 +447,20 @@ export function SettingsPage() {
                       ukljuceno
                     </label>
                   ) : (
-                    <select
+                    <CustomSelect
                       value={String(turboConfig[parameter.id as keyof TurboQuantConfig])}
-                      onChange={(event) =>
+                      options={[...parameter.safeChoices, ...parameter.advancedChoices].map((choice) => ({
+                        value: choice,
+                        label: choice,
+                      }))}
+                      onChange={(value) =>
                         setTurboConfig({
                           ...turboConfig,
-                          [parameter.id]: event.target.value,
+                          [parameter.id]: value,
                         })
                       }
-                    >
-                      {[...parameter.safeChoices, ...parameter.advancedChoices].map((choice) => (
-                        <option key={choice} value={choice}>
-                          {choice}
-                        </option>
-                      ))}
-                    </select>
+                      ariaLabel={`Izaberi ${parameter.label}`}
+                    />
                   )}
                 </div>
               </div>

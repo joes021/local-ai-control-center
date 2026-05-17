@@ -11,7 +11,7 @@ class DesktopEntryScriptTests(unittest.TestCase):
         content = SCRIPT.read_text(encoding="utf-8")
 
         self.assertIn("[Desktop Entry]", content)
-        self.assertIn("Local Qwen Control Center Next", content)
+        self.assertIn("Local AI Control Center", content)
         self.assertIn("start-control-center-next.sh", content)
         self.assertIn("Terminal=false", content)
         self.assertIn("local-qwen-control-center.desktop", content)

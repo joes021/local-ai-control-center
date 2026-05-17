@@ -186,7 +186,7 @@ export CONTROL_CENTER_NEXT_UI_PORT
 URL="$(app_url_for_port "$SELECTED_PORT")"
 HEALTH_URL="$(health_url_for_port "$SELECTED_PORT")"
 
-echo "Starting Local Qwen Control Center Next backend on ${BIND_HOST}."
+echo "Starting Local AI Control Center backend on ${BIND_HOST}."
 echo "Preferred port range: ${START_PORT}-${END_PORT}"
 echo "Selected port: ${SELECTED_PORT}"
 echo "Health check endpoint: ${HEALTH_URL}"

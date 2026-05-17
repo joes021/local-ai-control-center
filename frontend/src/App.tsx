@@ -3,16 +3,20 @@ import { useEffect, useState } from "react";
 import { Layout } from "./components/Layout";
 import { fetchStatus } from "./lib/api";
 import type { StatusPayload } from "./lib/types";
+import { BenchmarkPage } from "./pages/BenchmarkPage";
 import { HomePage } from "./pages/HomePage";
 import { LogsPage } from "./pages/LogsPage";
 import { ModelsPage } from "./pages/ModelsPage";
 import { RepairPage } from "./pages/RepairPage";
+import { ServerPage } from "./pages/ServerPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { UpdatesPage } from "./pages/UpdatesPage";
 
 const PAGES = {
   home: "Home",
+  server: "Server",
   models: "Models",
+  benchmark: "Benchmark",
   settings: "Settings",
   logs: "Logs",
   repair: "Repair",
@@ -62,13 +66,15 @@ export default function App() {
 
   return (
     <Layout
-      title="Local Qwen Control Center Next"
-      eyebrow={status?.hostShellLabel ?? "Local Qwen Desktop GUI Shell"}
+      title={`Local AI Control Center${status?.version ? ` ${status.version}` : ""}`}
+      eyebrow={status?.hostShellLabel ?? "Local AI Desktop GUI Shell"}
       subtitle={`Web UI + lokalni backend pravac za ${status?.hostPlatformLabel ?? "desktop"}.`}
       nav={nav}
     >
       {page === "home" ? <HomePage /> : null}
+      {page === "server" ? <ServerPage /> : null}
       {page === "models" ? <ModelsPage /> : null}
+      {page === "benchmark" ? <BenchmarkPage onOpenLogs={() => setPage("logs")} /> : null}
       {page === "settings" ? <SettingsPage /> : null}
       {page === "logs" ? <LogsPage /> : null}
       {page === "repair" ? <RepairPage /> : null}

@@ -21,7 +21,11 @@ class WindowsLauncherSmokeTests(unittest.TestCase):
         self.assertIn("Start-Process", content)
         self.assertIn("Start-Process $browserPath", content)
         self.assertIn("runtime-state.json", content)
-        self.assertIn("-m uvicorn backend.app.main:app", content)
+        self.assertIn("run_control_center_next.py", content)
+        self.assertIn("System.Threading.Mutex", content)
+        self.assertIn("WaitOne", content)
+        self.assertIn("ReleaseMutex", content)
+        self.assertIn("Save-State -Port $Port -ProcessId $process.Id", content)
 
     def test_windows_backend_checker_hits_health_endpoint(self):
         content = CHECKER.read_text(encoding="utf-8")

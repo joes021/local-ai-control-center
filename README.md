@@ -1,4 +1,4 @@
-# Local Qwen Control Center Next
+# Local AI Control Center
 
 Novi odvojeni Linux desktop `Control Center` pravac za `Local Qwen`, zasnovan na `Web UI + lokalni backend` arhitekturi.
 

@@ -6,6 +6,7 @@ $script:FrontendDir = Join-Path $script:Root "frontend"
 $script:VenvDir = Join-Path $script:Root ".venv"
 $script:StateDir = Join-Path $script:Root "state"
 $script:StateFile = Join-Path $script:StateDir "runtime-state.json"
+$script:StartupMutexName = "LocalQwenControlCenterNextStartup"
 
 $script:LocalHost = "127.0.0.1"
 $script:StartPort = if ($env:CONTROL_CENTER_NEXT_START_PORT) { [int]$env:CONTROL_CENTER_NEXT_START_PORT } else { 3210 }
@@ -94,6 +95,23 @@ function Read-State {
     }
 }
 
+function Acquire-StartupMutex {
+    $mutex = New-Object System.Threading.Mutex($false, $script:StartupMutexName)
+    $lockTaken = $false
+    try {
+        $lockTaken = $mutex.WaitOne(30000)
+    }
+    catch [System.Threading.AbandonedMutexException] {
+        $lockTaken = $true
+    }
+
+    if (-not $lockTaken) {
+        throw "Nije dobijen startup lock za Control Center Next u predvidjenom roku."
+    }
+
+    return $mutex
+}
+
 function Reuse-ExistingBackend {
     $state = Read-State
     if (-not $state -or -not $state.port) {
@@ -145,26 +163,40 @@ function Open-AppUrl([string]$Url) {
 
 function Start-Backend([int]$Port) {
     $pythonExe = Get-PythonExe
-    $frontendDist = Join-Path $script:FrontendDir "dist"
+    $runnerScript = Join-Path $script:Root "run_control_center_next.py"
     $localQwenHome = if ($env:LOCAL_QWEN_HOME) { $env:LOCAL_QWEN_HOME } else { Join-Path $env:USERPROFILE "LocalQwenHome" }
-    $psCommand = @"
-Set-Location '$($script:Root)'
-`$env:CONTROL_CENTER_NEXT_TARGET_PLATFORM = 'windows'
-`$env:CONTROL_CENTER_NEXT_UI_PORT = '$Port'
-`$env:CONTROL_CENTER_NEXT_ACCESS_MODE = 'local-only'
-`$env:CONTROL_CENTER_NEXT_HOST = '127.0.0.1'
-`$env:CONTROL_CENTER_NEXT_FRONTEND_DIST = '$frontendDist'
-`$env:LOCAL_QWEN_HOME = '$localQwenHome'
-& '$pythonExe' -m uvicorn backend.app.main:app --host 127.0.0.1 --port $Port
-"@
-    $process = Start-Process powershell -ArgumentList @(
-        "-NoProfile",
-        "-ExecutionPolicy", "Bypass",
-        "-WindowStyle", "Hidden",
-        "-Command", $psCommand
-    ) -PassThru
+    $frontendDist = Join-Path $script:FrontendDir "dist"
+    $savedEnv = @{
+        CONTROL_CENTER_NEXT_TARGET_PLATFORM = $env:CONTROL_CENTER_NEXT_TARGET_PLATFORM
+        CONTROL_CENTER_NEXT_UI_PORT = $env:CONTROL_CENTER_NEXT_UI_PORT
+        CONTROL_CENTER_NEXT_ACCESS_MODE = $env:CONTROL_CENTER_NEXT_ACCESS_MODE
+        CONTROL_CENTER_NEXT_HOST = $env:CONTROL_CENTER_NEXT_HOST
+        CONTROL_CENTER_NEXT_FRONTEND_DIST = $env:CONTROL_CENTER_NEXT_FRONTEND_DIST
+        LOCAL_QWEN_HOME = $env:LOCAL_QWEN_HOME
+    }
 
-    Save-State -Port $Port -Pid $process.Id
+    try {
+        $env:CONTROL_CENTER_NEXT_TARGET_PLATFORM = "windows"
+        $env:CONTROL_CENTER_NEXT_UI_PORT = "$Port"
+        $env:CONTROL_CENTER_NEXT_ACCESS_MODE = "local-only"
+        $env:CONTROL_CENTER_NEXT_HOST = "127.0.0.1"
+        $env:CONTROL_CENTER_NEXT_FRONTEND_DIST = $frontendDist
+        $env:LOCAL_QWEN_HOME = $localQwenHome
+
+        $process = Start-Process -FilePath $pythonExe -ArgumentList @($runnerScript) -WorkingDirectory $script:Root -WindowStyle Hidden -PassThru
+    }
+    finally {
+        foreach ($entry in $savedEnv.GetEnumerator()) {
+            if ($null -eq $entry.Value) {
+                Remove-Item "Env:$($entry.Key)" -ErrorAction SilentlyContinue
+            }
+            else {
+                Set-Item "Env:$($entry.Key)" -Value $entry.Value
+            }
+        }
+    }
+
+    Save-State -Port $Port -ProcessId $process.Id
 }
 
 Set-Location $script:Root
@@ -172,25 +204,32 @@ Ensure-StateDir
 Ensure-Venv
 Ensure-FrontendBuild
 
-if (Reuse-ExistingBackend) {
-    exit 0
+$startupMutex = Acquire-StartupMutex
+try {
+    if (Reuse-ExistingBackend) {
+        exit 0
+    }
+
+    $selectedPort = Get-SelectedPort
+    $healthUrl = Get-HealthUrl -Port $selectedPort
+    $appUrl = Get-AppUrl -Port $selectedPort
+
+    Write-Output "Starting Local AI Control Center backend on 127.0.0.1."
+    Write-Output "Preferred port range: $($script:StartPort)-$($script:EndPort)"
+    Write-Output "Selected port: $selectedPort"
+    Write-Output "Health check endpoint: $healthUrl"
+
+    Start-Backend -Port $selectedPort
+
+    if (-not (Wait-ForHealth -Url $healthUrl)) {
+        Write-Error "Backend nije postao healthy na vreme. Otvori rucno: $appUrl"
+        exit 1
+    }
+
+    Open-AppUrl -Url $appUrl
+    Write-Output "Control Center Next je dostupan na: $appUrl"
 }
-
-$selectedPort = Get-SelectedPort
-$healthUrl = Get-HealthUrl -Port $selectedPort
-$appUrl = Get-AppUrl -Port $selectedPort
-
-Write-Output "Starting Local Qwen Control Center Next backend on 127.0.0.1."
-Write-Output "Preferred port range: $($script:StartPort)-$($script:EndPort)"
-Write-Output "Selected port: $selectedPort"
-Write-Output "Health check endpoint: $healthUrl"
-
-Start-Backend -Port $selectedPort
-
-if (-not (Wait-ForHealth -Url $healthUrl)) {
-    Write-Error "Backend nije postao healthy na vreme. Otvori rucno: $appUrl"
-    exit 1
+finally {
+    $startupMutex.ReleaseMutex()
+    $startupMutex.Dispose()
 }
-
-Open-AppUrl -Url $appUrl
-Write-Output "Control Center Next je dostupan na: $appUrl"
