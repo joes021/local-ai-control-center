@@ -1,3 +1,7 @@
+v2.24.2
+- Windows installer više ne koristi nepostojeću Inno Setup konstantu `{userprofile}`.
+- Setup sada bezbedno rešava `LocalQwenHome` kroz `USERPROFILE` sa fallback putanjom, pa instalacija više ne puca na koraku `ssPostInstall`.
+
 v2.24.1
 - Windows installer sada registruje preporucene Unsloth modele u legacy katalog pre bootstrap download-a.
 - Bootstrapped model se automatski sinhronizuje nazad u aktivni install root, pa first-run probe vise ne pada na Windows clean install toku.

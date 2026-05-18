@@ -194,6 +194,16 @@ begin
   Result := GetModelField(GetSelectedModelIndex(), 'vram');
 end;
 
+function GetWorkspaceRoot(): string;
+var
+  UserProfilePath: string;
+begin
+  UserProfilePath := GetEnv('USERPROFILE');
+  if UserProfilePath = '' then
+    UserProfilePath := ExpandConstant('{localappdata}');
+  Result := AddBackslash(UserProfilePath) + 'LocalQwenHome';
+end;
+
 function ShouldShowMoreModelsAfterInstall(): Boolean;
 begin
   Result := MoreModelsPage.Values[0];
@@ -217,7 +227,7 @@ begin
 
   Result :=
     '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\install\windows\install.ps1') + '"' +
-    ' -InstallRoot "' + ExpandConstant('{userprofile}\LocalQwenHome') + '"' +
+    ' -InstallRoot "' + GetWorkspaceRoot() + '"' +
     ' -Edition "' + GetSelectedEdition() + '"' +
     ' -AccessMode "' + GetSelectedAccessMode() + '"' +
     ' -SelectedModelId "' + GetSelectedModelId() + '"' +
@@ -310,7 +320,7 @@ var
   SummaryPath: string;
   SummaryContent: AnsiString;
 begin
-  SummaryPath := ExpandConstant('{userprofile}\LocalQwenHome\state\install-summary.txt');
+  SummaryPath := AddBackslash(GetWorkspaceRoot()) + 'state\install-summary.txt';
   SummaryContent := '';
   if FileExists(SummaryPath) and LoadStringFromFile(SummaryPath, SummaryContent) then
     Result := SummaryContent
