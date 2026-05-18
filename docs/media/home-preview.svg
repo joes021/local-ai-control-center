@@ -1,0 +1,24 @@
+<svg width="900" height="620" viewBox="0 0 900 620" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="900" height="620" rx="24" fill="#241A10"/>
+  <rect x="20" y="20" width="860" height="580" rx="20" fill="#463727" stroke="#8F6B36" stroke-opacity="0.35"/>
+  <text x="42" y="58" fill="#D5A047" font-family="Segoe UI, Arial, sans-serif" font-size="18" letter-spacing="3">HOME</text>
+  <text x="42" y="110" fill="#F5EFE8" font-family="Segoe UI, Arial, sans-serif" font-size="44" font-weight="700">Local AI Control Center</text>
+  <rect x="42" y="146" width="116" height="34" rx="17" fill="#C9972B"/><text x="71" y="169" fill="#20160D" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700">Home</text>
+  <rect x="172" y="146" width="110" height="34" rx="17" fill="#5A4B39"/>
+  <rect x="294" y="146" width="110" height="34" rx="17" fill="#5A4B39"/>
+  <rect x="42" y="214" width="248" height="116" rx="18" fill="#4F402E" stroke="#7B6240"/>
+  <rect x="306" y="214" width="248" height="116" rx="18" fill="#4F402E" stroke="#7B6240"/>
+  <rect x="570" y="214" width="248" height="116" rx="18" fill="#4F402E" stroke="#7B6240"/>
+  <text x="66" y="250" fill="#C9B28D" font-family="Segoe UI, Arial, sans-serif" font-size="16">CONTROL CENTER HEALTH</text>
+  <text x="66" y="292" fill="#F5EFE8" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">OK</text>
+  <text x="330" y="250" fill="#C9B28D" font-family="Segoe UI, Arial, sans-serif" font-size="16">ACTIVE MODEL</text>
+  <text x="330" y="292" fill="#F5EFE8" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="700">Qwen3.6 35B A3B</text>
+  <text x="594" y="250" fill="#C9B28D" font-family="Segoe UI, Arial, sans-serif" font-size="16">OPENCODE</text>
+  <text x="594" y="292" fill="#F5EFE8" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="700">Active</text>
+  <rect x="42" y="356" width="776" height="182" rx="20" fill="#433524" stroke="#7B6240"/>
+  <text x="66" y="392" fill="#D0A250" font-family="Segoe UI, Arial, sans-serif" font-size="18">SERVER SUMMARY</text>
+  <rect x="66" y="418" width="208" height="18" rx="9" fill="#5E4C36"/>
+  <rect x="66" y="452" width="356" height="14" rx="7" fill="#6C5843"/>
+  <rect x="66" y="482" width="290" height="14" rx="7" fill="#6C5843"/>
+  <rect x="66" y="512" width="248" height="14" rx="7" fill="#6C5843"/>
+</svg>

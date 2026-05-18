@@ -1,0 +1,30 @@
+<svg width="1600" height="520" viewBox="0 0 1600 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1600" y2="520" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#23190F"/>
+      <stop offset="1" stop-color="#4C3A23"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="200" y1="130" x2="1360" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5C4A31" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#2A2118" stop-opacity="0.84"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="520" rx="32" fill="url(#bg)"/>
+  <circle cx="1330" cy="88" r="150" fill="#E1A93A" fill-opacity="0.08"/>
+  <circle cx="250" cy="470" r="220" fill="#D29A3D" fill-opacity="0.08"/>
+  <rect x="78" y="72" width="1444" height="376" rx="28" fill="url(#panel)" stroke="#B7893B" stroke-opacity="0.35"/>
+  <text x="120" y="150" fill="#D8A64A" font-family="Segoe UI, Arial, sans-serif" font-size="24" letter-spacing="4">PUBLIC INSTALLER RELEASE</text>
+  <text x="120" y="236" fill="#F5EFE7" font-family="Segoe UI, Arial, sans-serif" font-size="72" font-weight="700">Local AI Control Center</text>
+  <text x="120" y="292" fill="#E8D8BF" font-family="Segoe UI, Arial, sans-serif" font-size="30">Windows • Ubuntu x86_64 • Ubuntu arm64</text>
+  <text x="120" y="342" fill="#D8C3A2" font-family="Segoe UI, Arial, sans-serif" font-size="26">Installers, runtime control, OpenCode, model browser, benchmark, repair.</text>
+  <rect x="120" y="384" width="210" height="40" rx="20" fill="#C9972B"/>
+  <text x="148" y="410" fill="#21170E" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="700">Stable public v1</text>
+  <rect x="1128" y="122" width="286" height="214" rx="24" fill="#21170E" fill-opacity="0.78" stroke="#A97C33" stroke-opacity="0.4"/>
+  <rect x="1156" y="152" width="118" height="24" rx="12" fill="#3B2E1F"/>
+  <rect x="1288" y="152" width="98" height="24" rx="12" fill="#A97C33"/>
+  <rect x="1156" y="198" width="230" height="18" rx="9" fill="#54402C"/>
+  <rect x="1156" y="230" width="200" height="18" rx="9" fill="#54402C"/>
+  <rect x="1156" y="266" width="158" height="18" rx="9" fill="#3C74E0"/>
+  <rect x="1326" y="266" width="60" height="18" rx="9" fill="#E6544B"/>
+  <rect x="1156" y="302" width="230" height="10" rx="5" fill="#6A5640"/>
+</svg>

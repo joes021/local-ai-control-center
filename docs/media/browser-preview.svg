@@ -1,0 +1,42 @@
+<svg width="900" height="620" viewBox="0 0 900 620" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="900" height="620" rx="24" fill="#241A10"/>
+  <rect x="20" y="20" width="860" height="580" rx="20" fill="#463727" stroke="#8F6B36" stroke-opacity="0.35"/>
+  <text x="42" y="58" fill="#D5A047" font-family="Segoe UI, Arial, sans-serif" font-size="18" letter-spacing="3">BROWSER</text>
+  <rect x="42" y="82" width="270" height="38" rx="19" fill="#312418" stroke="#8F6B36"/><text x="62" y="106" fill="#D9C4A4" font-family="Segoe UI, Arial, sans-serif" font-size="18">Search models, family, repo...</text>
+  <rect x="650" y="82" width="170" height="38" rx="19" fill="#5D4B38"/><text x="680" y="106" fill="#F4ECDD" font-family="Segoe UI, Arial, sans-serif" font-size="16">Refresh catalog</text>
+  <rect x="42" y="146" width="776" height="64" rx="18" fill="#4B3C2B"/>
+  <rect x="58" y="164" width="110" height="28" rx="14" fill="#5D4B38"/>
+  <rect x="182" y="164" width="130" height="28" rx="14" fill="#5D4B38"/>
+  <rect x="326" y="164" width="130" height="28" rx="14" fill="#5D4B38"/>
+  <rect x="470" y="164" width="120" height="28" rx="14" fill="#5D4B38"/>
+  <rect x="604" y="164" width="120" height="28" rx="14" fill="#5D4B38"/>
+  <rect x="42" y="236" width="776" height="320" rx="20" fill="#403222" stroke="#765F3F"/>
+  <rect x="42" y="236" width="776" height="46" rx="20" fill="#2A2016"/>
+  <text x="62" y="265" fill="#EBDCC5" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">MODEL</text>
+  <text x="352" y="265" fill="#EBDCC5" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">FAMILY</text>
+  <text x="500" y="265" fill="#EBDCC5" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">SOURCE</text>
+  <text x="650" y="265" fill="#EBDCC5" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">FIT</text>
+  <g>
+    <rect x="58" y="300" width="744" height="58" rx="12" fill="#6A5630"/>
+    <rect x="670" y="316" width="86" height="24" rx="12" fill="#C9972B"/>
+    <text x="78" y="325" fill="#F5EFE8" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="700">Qwen3.6-35B-A3B-UD-IQ2_XXS.gguf</text>
+    <text x="78" y="346" fill="#CFBEA3" font-family="Segoe UI, Arial, sans-serif" font-size="15">Recommended for 12 GB class machines.</text>
+    <text x="360" y="335" fill="#F5EFE8" font-family="Segoe UI, Arial, sans-serif" font-size="18">Qwen</text>
+    <text x="510" y="335" fill="#F5EFE8" font-family="Segoe UI, Arial, sans-serif" font-size="18">Unsloth</text>
+    <text x="695" y="333" fill="#20160D" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">Good fit</text>
+  </g>
+  <g>
+    <rect x="58" y="372" width="744" height="58" rx="12" fill="#51412E"/>
+    <text x="78" y="397" fill="#F5EFE8" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="700">gemma-4-E4B-it-Q4_0.gguf</text>
+    <text x="78" y="418" fill="#CFBEA3" font-family="Segoe UI, Arial, sans-serif" font-size="15">Safer default for 6 GB class setups.</text>
+    <text x="360" y="407" fill="#F5EFE8" font-family="Segoe UI, Arial, sans-serif" font-size="18">Gemma</text>
+    <text x="510" y="407" fill="#F5EFE8" font-family="Segoe UI, Arial, sans-serif" font-size="18">Unsloth</text>
+  </g>
+  <g>
+    <rect x="58" y="444" width="744" height="58" rx="12" fill="#51412E"/>
+    <text x="78" y="469" fill="#F5EFE8" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="700">Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf</text>
+    <text x="78" y="490" fill="#CFBEA3" font-family="Segoe UI, Arial, sans-serif" font-size="15">High-end MTP-oriented choice for 24 GB class GPUs.</text>
+    <text x="360" y="479" fill="#F5EFE8" font-family="Segoe UI, Arial, sans-serif" font-size="18">Qwen</text>
+    <text x="510" y="479" fill="#F5EFE8" font-family="Segoe UI, Arial, sans-serif" font-size="18">Unsloth</text>
+  </g>
+</svg>
