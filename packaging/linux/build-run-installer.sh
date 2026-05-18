@@ -3,7 +3,21 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-VERSION="${1:-$(python3 - <<'PY' "$REPO_ROOT/version.json"
+resolve_python_cmd() {
+  if command -v python3 >/dev/null 2>&1 && python3 -c "import sys; sys.exit(0)" >/dev/null 2>&1; then
+    printf '%s\n' "python3"
+    return 0
+  fi
+  if command -v python >/dev/null 2>&1 && python -c "import sys; sys.exit(0)" >/dev/null 2>&1; then
+    printf '%s\n' "python"
+    return 0
+  fi
+  echo "Python interpreter nije pronadjen." >&2
+  return 1
+}
+
+PYTHON_CMD="$(resolve_python_cmd)"
+VERSION="${1:-$("$PYTHON_CMD" - <<'PY' "$REPO_ROOT/version.json"
 import json, sys
 with open(sys.argv[1], "r", encoding="utf-8") as f:
     print(json.load(f)["version"])
@@ -74,7 +88,7 @@ build_one() {
   cp "$REPO_ROOT/run_control_center_next.py" "$payload_dir/"
   printf '%s\n' "$arch" > "$payload_dir/.target-architecture"
   find "$payload_dir" -type f -name "*.sh" -print0 | while IFS= read -r -d '' file; do
-    python3 - <<'PY' "$file"
+    "$PYTHON_CMD" - <<'PY' "$file"
 from pathlib import Path
 import sys
 

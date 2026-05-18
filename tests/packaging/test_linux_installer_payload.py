@@ -80,6 +80,9 @@ class LinuxInstallerPayloadTests(unittest.TestCase):
         self.assertIn('"$payload_dir/legacy-launchers"', content)
         self.assertIn('cp -R "$SUPPORT_REPO/launchers/." "$payload_dir/legacy-launchers/"', content)
         self.assertIn('replace(b"\\r\\n", b"\\n")', content)
+        self.assertIn("resolve_python_cmd()", content)
+        self.assertIn('PYTHON_CMD="$(resolve_python_cmd)"', content)
+        self.assertIn('"$PYTHON_CMD" - <<\'PY\'', content)
 
 
 if __name__ == "__main__":
