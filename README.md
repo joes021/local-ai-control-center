@@ -11,8 +11,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/joes021/local-qwen-control-center-next/releases/tag/v2.24.1"><img src="https://img.shields.io/badge/release-v2.24.1-C9972B?style=for-the-badge" alt="Latest release"></a>
-  <a href="https://github.com/joes021/local-qwen-control-center-next/releases"><img src="https://img.shields.io/badge/download-installers-4B3B2B?style=for-the-badge" alt="Download installers"></a>
+  <a href="https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.1"><img src="https://img.shields.io/badge/release-v2.24.1-C9972B?style=for-the-badge" alt="Latest release"></a>
+  <a href="https://github.com/joes021/local-ai-control-center/releases"><img src="https://img.shields.io/badge/download-installers-4B3B2B?style=for-the-badge" alt="Download installers"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Ubuntu%20x86__64%20%7C%20Ubuntu%20arm64-6C5430?style=for-the-badge" alt="Platforms">
   <img src="https://img.shields.io/badge/status-public%20v1-2F6B4F?style=for-the-badge" alt="Status">
 </p>
@@ -21,14 +21,14 @@
 
 | Platform | Direct download |
 | --- | --- |
-| Windows | [Local-AI-Control-Center-Setup-2.24.1.exe](https://github.com/joes021/local-qwen-control-center-next/releases/download/v2.24.1/Local-AI-Control-Center-Setup-2.24.1.exe) |
-| Ubuntu x86_64 | [Local-AI-Control-Center-Setup-linux-x86_64-2.24.1.run](https://github.com/joes021/local-qwen-control-center-next/releases/download/v2.24.1/Local-AI-Control-Center-Setup-linux-x86_64-2.24.1.run) |
-| Ubuntu arm64 | [Local-AI-Control-Center-Setup-linux-arm64-2.24.1.run](https://github.com/joes021/local-qwen-control-center-next/releases/download/v2.24.1/Local-AI-Control-Center-Setup-linux-arm64-2.24.1.run) |
+| Windows | [Local-AI-Control-Center-Setup-2.24.1.exe](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.1/Local-AI-Control-Center-Setup-2.24.1.exe) |
+| Ubuntu x86_64 | [Local-AI-Control-Center-Setup-linux-x86_64-2.24.1.run](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.1/Local-AI-Control-Center-Setup-linux-x86_64-2.24.1.run) |
+| Ubuntu arm64 | [Local-AI-Control-Center-Setup-linux-arm64-2.24.1.run](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.1/Local-AI-Control-Center-Setup-linux-arm64-2.24.1.run) |
 
 Additional release files:
-- [Latest release page](https://github.com/joes021/local-qwen-control-center-next/releases/tag/v2.24.1)
-- [checksums.txt](https://github.com/joes021/local-qwen-control-center-next/releases/download/v2.24.1/checksums.txt)
-- [support-matrix.json](https://github.com/joes021/local-qwen-control-center-next/releases/download/v2.24.1/support-matrix.json)
+- [Latest release page](https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.1)
+- [checksums.txt](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.1/checksums.txt)
+- [support-matrix.json](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.1/support-matrix.json)
 
 ## Product overview
 

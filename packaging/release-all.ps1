@@ -40,7 +40,7 @@ $linuxArm64Artifact = Join-Path $distLinux "$($versionData.windowsSetupBaseName)
 $checksumsPath = Join-Path $tempReleaseDir "checksums.txt"
 $supportMatrixPath = Join-Path $tempReleaseDir "support-matrix.json"
 $releaseSummaryPath = Join-Path $tempReleaseDir "release-summary-v$Version.md"
-$releaseUrl = "https://github.com/joes021/local-qwen-control-center-next/releases/tag/v$Version"
+$releaseUrl = "https://github.com/joes021/local-ai-control-center/releases/tag/v$Version"
 
 function Get-ReleaseSection {
     param(
