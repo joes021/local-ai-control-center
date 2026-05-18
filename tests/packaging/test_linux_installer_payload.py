@@ -31,6 +31,11 @@ class LinuxInstallerPayloadTests(unittest.TestCase):
         self.assertIn("systemctl --user stop control-center-next", content)
         self.assertIn("CONTROL_CENTER_NEXT_SKIP_OPEN=1", content)
         self.assertIn('CONTROL_CENTER_NEXT_ACCESS_MODE="$ACCESS_MODE"', content)
+        self.assertIn("OPENCODE_WORKSPACE_DIR", content)
+        self.assertIn('"workingDirectory": "$OPENCODE_WORKSPACE_DIR"', content)
+        self.assertIn('"threads": 8', content)
+        self.assertIn('"installRoot": "$WORKSPACE_ROOT"', content)
+        self.assertIn('find "$APP_ROOT/launchers" "$APP_ROOT/install" "$BIN_DIR" -type f -name "*.sh" -exec chmod +x {} +', content)
 
     def test_linux_launcher_uses_local_qwen_home_state(self):
         content = (ROOT / "launchers" / "linux" / "start-control-center-next.sh").read_text(encoding="utf-8")

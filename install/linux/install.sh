@@ -24,6 +24,7 @@ INSTALL_STATE_PATH="$STATE_DIR/install-state.json"
 INSTALL_REPORT_PATH="$STATE_DIR/install-report.json"
 SETTINGS_PATH="$STATE_DIR/settings.json"
 RUNTIME_CONFIG_PATH="$STATE_DIR/runtime-config.json"
+OPENCODE_WORKSPACE_DIR="$WORKSPACE_ROOT/opencode-workspace"
 TARGET_ARCH="$(cat "$PAYLOAD_ROOT/.target-architecture" 2>/dev/null || echo "unknown")"
 HOST_ARCH="$(uname -m)"
 
@@ -179,6 +180,29 @@ EOF
   printf '%s\n' "$path"
 }
 
+patch_legacy_linux_launchers() {
+  local launchers_dir="$WORKSPACE_ROOT/launchers"
+  local configure_script="$launchers_dir/configure-settings.sh"
+  if [ ! -d "$launchers_dir" ]; then
+    return 0
+  fi
+  find "$launchers_dir" -type f -name "*.sh" -exec chmod +x {} + 2>/dev/null || true
+  if [ -f "$configure_script" ]; then
+    python3 - <<'PY' "$configure_script"
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+old = '"baseURL": "http://127.0.0.1:8091/v1",'
+new = '"baseURL": f"http://127.0.0.1:{state[\\"port\\"]}/v1",'
+if old in text:
+    text = text.replace(old, new)
+    path.write_text(text, encoding="utf-8")
+PY
+  fi
+}
+
 wait_for_control_center_health() {
   local url="$1"
   local attempts="${2:-30}"
@@ -261,6 +285,7 @@ ensure_dir "$WORKSPACE_ROOT"
 ensure_dir "$STATE_DIR"
 ensure_dir "$APPS_DIR"
 ensure_dir "$BIN_DIR"
+ensure_dir "$OPENCODE_WORKSPACE_DIR"
 
 ensure_packages
 
@@ -277,6 +302,8 @@ copy_if_exists "$PAYLOAD_ROOT/version.json" "$APP_ROOT/version.json"
 copy_if_exists "$PAYLOAD_ROOT/version.json" "$WORKSPACE_ROOT/version.json"
 copy_if_exists "$PAYLOAD_ROOT/release-notes.txt" "$APP_ROOT/release-notes.txt"
 copy_if_exists "$PAYLOAD_ROOT/release-notes.txt" "$WORKSPACE_ROOT/release-notes.txt"
+find "$APP_ROOT/launchers" "$APP_ROOT/install" "$BIN_DIR" -type f -name "*.sh" -exec chmod +x {} + 2>/dev/null || true
+patch_legacy_linux_launchers
 
 if ensure_opencode; then
   OPENCODE_OK=true
@@ -301,12 +328,16 @@ STARTED_CONTROL_CENTER_URL=""
 cat > "$INSTALL_STATE_PATH" <<EOF
 {
   "edition": "$INSTALL_VARIANT",
-  "profile": "balanced",
-  "modelId": "${SKIP_MODEL_DOWNLOAD:+none}",
+  "profile": "$PROFILE",
+  "modelId": "none",
   "modelFile": "",
   "port": 8091,
   "llamaServerExe": "$( [ -e "$LLAMA_BIN" ] && printf '%s' "$LLAMA_BIN" )",
-  "turboServerExe": ""
+  "turboServerExe": "",
+  "threads": 8,
+  "installRoot": "$WORKSPACE_ROOT",
+  "noMmap": false,
+  "mlock": false
 }
 EOF
 
@@ -314,9 +345,28 @@ cat > "$SETTINGS_PATH" <<EOF
 {
   "edition": "$INSTALL_VARIANT",
   "profile": "$PROFILE",
-  "context": 262144,
-  "outputTokens": 8192,
-  "accessMode": "$ACCESS_MODE"
+  "accessMode": "$ACCESS_MODE",
+  "llama": {
+    "contextSize": 262144,
+    "maxOutputTokens": 8192,
+    "contextSizeCustomized": false,
+    "maxOutputTokensCustomized": false
+  },
+  "opencode": {
+    "buildSteps": 120,
+    "planSteps": 80,
+    "generalSteps": 100,
+    "exploreSteps": 60,
+    "workingDirectory": "$OPENCODE_WORKSPACE_DIR"
+  },
+  "threads": 8,
+  "gpuLayers": 99,
+  "batch": 2048,
+  "ubatch": 512,
+  "temperature": 0.7,
+  "topP": 0.95,
+  "minP": 0.05,
+  "topK": 40
 }
 EOF
 
