@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ActionResultPanel } from "../components/ActionResultPanel";
 import { CompatibilityCalculatorModal } from "../components/CompatibilityCalculatorModal";
 import { CustomSelect } from "../components/CustomSelect";
+import { ModelDownloadProgressCard } from "../components/ModelDownloadProgressCard";
 import {
   addBrowserModelToLocal,
   downloadBrowserModel,
   fetchBrowserCatalog,
+  fetchDownloadProgress,
   refreshBrowserCatalog,
 } from "../lib/api";
 import type {
@@ -16,6 +18,7 @@ import type {
   BrowserFitStatus,
   BrowserMtpStatus,
   CompatibilityCheckRequest,
+  DownloadProgressPayload,
 } from "../lib/types";
 
 type BrowserCatalogEnvelope =
@@ -282,9 +285,11 @@ export function BrowserPage() {
   const [compatibilityRequest, setCompatibilityRequest] = useState<CompatibilityCheckRequest | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [downloadOffer, setDownloadOffer] = useState<{ modelId: string; label: string } | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgressPayload | null>(null);
   const [warningsExpanded, setWarningsExpanded] = useState(false);
   const [errorsExpanded, setErrorsExpanded] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const progressStatusRef = useRef<string | null>(null);
 
   async function loadCatalog() {
     try {
@@ -304,6 +309,48 @@ export function BrowserPage() {
 
   useEffect(() => {
     void loadCatalog();
+    void fetchDownloadProgress()
+      .then((payload) => {
+        setDownloadProgress(payload);
+        progressStatusRef.current = payload.status;
+      })
+      .catch(() => null);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function pollProgress() {
+      try {
+        const payload = await fetchDownloadProgress();
+        if (cancelled) {
+          return;
+        }
+        const previousStatus = progressStatusRef.current;
+        progressStatusRef.current = payload.status;
+        setDownloadProgress(payload);
+        if (
+          previousStatus !== payload.status &&
+          (payload.status === "completed" || payload.status === "already-installed" || payload.status === "error")
+        ) {
+          await loadCatalog();
+        }
+      } catch {
+        if (!cancelled) {
+          setDownloadProgress(null);
+        }
+      }
+    }
+
+    void pollProgress();
+    const timer = window.setInterval(() => {
+      void pollProgress();
+    }, 1500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, []);
 
   const familyOptions = useMemo(() => {
@@ -811,6 +858,8 @@ export function BrowserPage() {
         ) : (
           <div className="helper-text">Select a Browser row to inspect details and actions.</div>
         )}
+
+        <ModelDownloadProgressCard progress={downloadProgress} />
 
         <div className="browser-table-panel">
           <div className="browser-table-wrap">

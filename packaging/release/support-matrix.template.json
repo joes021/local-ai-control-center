@@ -1,0 +1,20 @@
+{
+  "windows": {
+    "controlCenter": "required",
+    "llamaCpp": "required",
+    "openCode": "required",
+    "turboQuant": "optional"
+  },
+  "linux-x86_64": {
+    "controlCenter": "required",
+    "llamaCpp": "required",
+    "openCode": "required",
+    "turboQuant": "optional"
+  },
+  "linux-arm64": {
+    "controlCenter": "required",
+    "llamaCpp": "required",
+    "openCode": "required",
+    "turboQuant": "optional-or-unsupported"
+  }
+}

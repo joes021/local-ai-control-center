@@ -1,0 +1,4 @@
+v2.21.0
+- Added multi-platform hybrid installer packaging for Windows, Ubuntu x86_64, and Ubuntu arm64.
+- Installers now target real dependency/runtime readiness instead of only copying UI files.
+- Added packaging metadata support for checksums and support matrix generation.

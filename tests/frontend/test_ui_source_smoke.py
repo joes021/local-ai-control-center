@@ -11,11 +11,13 @@ HOME_PAGE = ROOT / "frontend" / "src" / "pages" / "HomePage.tsx"
 SERVER_PAGE = ROOT / "frontend" / "src" / "pages" / "ServerPage.tsx"
 OPENCODE_PAGE = ROOT / "frontend" / "src" / "pages" / "OpenCodePage.tsx"
 COMPAT_MODAL = ROOT / "frontend" / "src" / "components" / "CompatibilityCalculatorModal.tsx"
+DOWNLOAD_PROGRESS_CARD = ROOT / "frontend" / "src" / "components" / "ModelDownloadProgressCard.tsx"
 
 
 class UiSourceSmokeTests(unittest.TestCase):
     def test_models_page_contains_delete_and_collapse_controls(self):
         content = MODELS_PAGE.read_text(encoding="utf-8")
+        download_card = DOWNLOAD_PROGRESS_CARD.read_text(encoding="utf-8")
 
         self.assertIn("Collapse all", content)
         self.assertIn("Expand all", content)
@@ -23,8 +25,9 @@ class UiSourceSmokeTests(unittest.TestCase):
         self.assertIn("Skinuti", content)
         self.assertIn("Aktivni", content)
         self.assertIn("Rezultati filtera", content)
-        self.assertIn("Download status", content)
-        self.assertIn("ETA", content)
+        self.assertIn("ModelDownloadProgressCard", content)
+        self.assertIn("Download status", download_card)
+        self.assertIn("ETA", download_card)
         self.assertIn("Delete", content)
         self.assertIn("Check compatibility", content)
         self.assertIn("Pokrecem model akciju", content)
@@ -128,6 +131,7 @@ class UiSourceSmokeTests(unittest.TestCase):
 
     def test_browser_page_contains_required_catalog_strings(self):
         content = BROWSER_PAGE.read_text(encoding="utf-8")
+        download_card = DOWNLOAD_PROGRESS_CARD.read_text(encoding="utf-8")
 
         self.assertIn("Browser", content)
         self.assertIn("Search", content)
@@ -148,6 +152,9 @@ class UiSourceSmokeTests(unittest.TestCase):
         self.assertIn("currentPage", content)
         self.assertIn("25", content)
         self.assertIn("browser-pagination", content)
+        self.assertIn("ModelDownloadProgressCard", content)
+        self.assertIn("Download status", download_card)
+        self.assertIn("fetchDownloadProgress", content)
         self.assertNotIn("<aside className=\"browser-detail-panel\">", content)
 
     def test_compatibility_modal_contains_live_calculator_actions(self):
