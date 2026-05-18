@@ -65,6 +65,12 @@ class WindowsInstallerBuilderTests(unittest.TestCase):
         self.assertIn('$modelIdToDownload = [string]$SelectedModelSelection.legacyModelId', content)
         self.assertIn('-ModelId $modelIdToDownload -Download', content)
         self.assertIn("Sync-BootstrappedModelIntoWorkspace -SelectedModelSelection $SelectedModelSelection", content)
+        self.assertIn("[string]$IconPath = \"\"", content)
+        self.assertIn("$shortcut.IconLocation = $IconPath", content)
+        self.assertIn('$controlCenterIconPath = Join-Path $assetsDir "control-center.ico"', content)
+        self.assertIn('$openCodeIconPath = Join-Path $assetsDir "opencode-local-qwen.ico"', content)
+        self.assertIn('Write-Shortcut -ShortcutPath (Join-Path $desktopDir "Local AI Control Center.lnk") -TargetPath $launchWrapper -IconPath $controlCenterIconPath', content)
+        self.assertIn('Write-Shortcut -ShortcutPath (Join-Path $desktopDir "OpenCode - Local AI Control Center.lnk") -TargetPath (Resolve-OpenCodePath) -IconPath $openCodeIconPath', content)
         catalog_block = content.split("if ($catalogEntry) {", 1)[1].split("if ([string]::IsNullOrWhiteSpace($resolvedLabel)) {", 1)[0]
         self.assertIn("$resolvedLabel = [string]$catalogEntry.label", catalog_block)
         self.assertIn("$resolvedDownloadFile = [string]$catalogEntry.downloadFile", catalog_block)

@@ -1,3 +1,6 @@
+v2.24.3
+- Windows desktop shortcut creation sada eksplicitno dodeljuje `control-center.ico` i `opencode-local-qwen.ico`, pa installer više ne ostavlja generičke prečice bez naših ikonica.
+
 v2.24.2
 - Windows installer više ne koristi nepostojeću Inno Setup konstantu `{userprofile}`.
 - Setup sada bezbedno rešava `LocalQwenHome` kroz `USERPROFILE` sa fallback putanjom, pa instalacija više ne puca na koraku `ssPostInstall`.

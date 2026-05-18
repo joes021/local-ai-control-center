@@ -364,13 +364,17 @@ function Write-Shortcut {
     param(
         [string]$ShortcutPath,
         [string]$TargetPath,
-        [string]$Arguments = ""
+        [string]$Arguments = "",
+        [string]$IconPath = ""
     )
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($ShortcutPath)
     $shortcut.TargetPath = $TargetPath
     $shortcut.Arguments = $Arguments
     $shortcut.WorkingDirectory = Split-Path -Parent $TargetPath
+    if ($IconPath -and (Test-Path $IconPath)) {
+        $shortcut.IconLocation = $IconPath
+    }
     $shortcut.Save()
 }
 
@@ -971,9 +975,11 @@ $modelBootstrapState = Invoke-ModelBootstrap -SelectedModelSelection $selectedMo
 Write-InstallLogLine "Model bootstrap result: status=$($modelBootstrapState.modelBootstrap.status) selectedModelDownloaded=$($modelBootstrapState.selectedModelDownloaded)"
 
 $launchWrapper = Write-LaunchWrapper
-Write-Shortcut -ShortcutPath (Join-Path $desktopDir "Local AI Control Center.lnk") -TargetPath $launchWrapper
+$controlCenterIconPath = Join-Path $assetsDir "control-center.ico"
+$openCodeIconPath = Join-Path $assetsDir "opencode-local-qwen.ico"
+Write-Shortcut -ShortcutPath (Join-Path $desktopDir "Local AI Control Center.lnk") -TargetPath $launchWrapper -IconPath $controlCenterIconPath
 if ($opencodeReady -and (Resolve-OpenCodePath)) {
-    Write-Shortcut -ShortcutPath (Join-Path $desktopDir "OpenCode - Local AI Control Center.lnk") -TargetPath (Resolve-OpenCodePath)
+    Write-Shortcut -ShortcutPath (Join-Path $desktopDir "OpenCode - Local AI Control Center.lnk") -TargetPath (Resolve-OpenCodePath) -IconPath $openCodeIconPath
 }
 
 $llamaPath = Join-Path $appsDir "llama.cpp\build\bin\llama-server.exe"
