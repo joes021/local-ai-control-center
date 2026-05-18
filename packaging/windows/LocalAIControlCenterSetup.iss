@@ -55,6 +55,7 @@ Source: "{#SourceRoot}\release-notes.txt"; DestDir: "{app}"; Flags: ignoreversio
 Source: "{#SupportRoot}\config\profiles\*"; DestDir: "{app}\config\profiles"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SupportRoot}\scripts\*"; DestDir: "{app}\scripts"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc"
 Source: "{#SupportRoot}\assets\icons\*"; DestDir: "{app}\assets\icons"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SupportRoot}\launcher\windows\*"; DestDir: "{app}\support\launcher\windows"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Code]
 var
@@ -145,12 +146,25 @@ begin
   RuntimePage.Values[1] := True;
 
   SummaryPage := CreateOutputMsgMemoPage(
-    wpInstalling,
+    wpFinished,
     'Installer summary',
     'Review the Windows setup result',
     'Read the installer output before pressing Finish.',
     ''
   );
+end;
+
+function LoadInstallSummary(): string;
+var
+  SummaryPath: string;
+  SummaryContent: AnsiString;
+begin
+  SummaryPath := ExpandConstant('{userprofile}\LocalQwenHome\state\install-summary.txt');
+  SummaryContent := '';
+  if FileExists(SummaryPath) and LoadStringFromFile(SummaryPath, SummaryContent) then
+    Result := SummaryContent
+  else
+    Result := 'Installer summary nije pronadjen.';
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -180,6 +194,7 @@ begin
     else
       InstallRunExitCode := -1;
 
+    SummaryText := SummaryText + #13#10 + #13#10 + LoadInstallSummary();
     if InstallRunExitCode = 0 then
       SummaryText := SummaryText + #13#10 + #13#10 + 'Setup finished successfully.'
     else

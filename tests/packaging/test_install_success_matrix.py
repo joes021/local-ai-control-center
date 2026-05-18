@@ -12,6 +12,8 @@ class InstallSuccessMatrixTests(unittest.TestCase):
         self.assertIn("llama.cpp", content)
         self.assertIn("OpenCode", content)
         self.assertIn("TurboQuant", content)
+        self.assertIn("Runtime port", content)
+        self.assertIn("Control Center startup", content)
 
     def test_linux_installer_declares_arm64_optional_turboquant(self):
         content = (ROOT / "install" / "linux" / "install.sh").read_text(encoding="utf-8")

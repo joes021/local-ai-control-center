@@ -115,10 +115,11 @@ function New-StagingPayload {
         Copy-IfExists -Source (Join-Path $repoRoot $file) -Destination (Join-Path $payloadRoot $file)
     }
 
-    New-Item -ItemType Directory -Force -Path (Join-Path $supportRoot "config\profiles"), (Join-Path $supportRoot "scripts"), (Join-Path $supportRoot "assets\icons") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $supportRoot "config\profiles"), (Join-Path $supportRoot "scripts"), (Join-Path $supportRoot "assets\icons"), (Join-Path $supportRoot "launcher\windows") | Out-Null
     Copy-FolderIfExists -Source (Join-Path $SupportRepoRoot "config\profiles") -Destination (Join-Path $supportRoot "config\profiles")
     Copy-FolderIfExists -Source (Join-Path $SupportRepoRoot "scripts") -Destination (Join-Path $supportRoot "scripts")
     Copy-FolderIfExists -Source (Join-Path $SupportRepoRoot "assets\icons") -Destination (Join-Path $supportRoot "assets\icons")
+    Copy-FolderIfExists -Source (Join-Path $SupportRepoRoot "launcher\windows") -Destination (Join-Path $supportRoot "launcher\windows")
 
     return @{
         StageRoot = $stageRoot

@@ -1,3 +1,8 @@
+v2.23.7
+- Windows installer sada pakuje legacy Windows launchere i koristi ih za runtime auto-heal kada posle instalacije nema zdravog `llama.cpp` servera.
+- Windows launcher sada poštuje izabrani `access mode`, ume da forsira restart i čuva runtime state sa `accessMode` i `host` vrednostima.
+- Završni Windows installer ekran sada čita `install-summary.txt` i prikazuje stvarni rezultat instalacije umesto samo sirovog exit koda.
+
 v2.23.6
 - Linux installer sada pakuje legacy launchere direktno u payload umesto da zavisi od spoljnog support repo putanje tokom instalacije.
 - Installer sada cuva i obnavlja prethodni runtime/model kontekst, prepoznaje zdrave portove i po potrebi pokrece legacy server launcher.

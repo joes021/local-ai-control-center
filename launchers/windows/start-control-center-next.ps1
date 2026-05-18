@@ -6,6 +6,7 @@ $script:FrontendDir = Join-Path $script:Root "frontend"
 $script:VenvDir = Join-Path $script:Root ".venv"
 $script:StateDir = Join-Path $script:Root "state"
 $script:StateFile = Join-Path $script:StateDir "runtime-state.json"
+$script:RuntimeConfigFile = Join-Path $script:StateDir "runtime-config.json"
 $script:StartupMutexName = "LocalQwenControlCenterNextStartup"
 
 $script:LocalHost = "127.0.0.1"
@@ -95,6 +96,48 @@ function Read-State {
     }
 }
 
+function Read-RuntimeConfig {
+    if (-not (Test-Path $script:RuntimeConfigFile)) {
+        return $null
+    }
+
+    try {
+        return Get-Content $script:RuntimeConfigFile -Raw | ConvertFrom-Json
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-RequestedAccessMode {
+    if ($env:CONTROL_CENTER_NEXT_ACCESS_MODE) {
+        return [string]$env:CONTROL_CENTER_NEXT_ACCESS_MODE
+    }
+
+    $config = Read-RuntimeConfig
+    if ($config -and $config.accessMode) {
+        return [string]$config.accessMode
+    }
+
+    return "local-only"
+}
+
+function Get-RequestedHost {
+    if ($env:CONTROL_CENTER_NEXT_HOST) {
+        return [string]$env:CONTROL_CENTER_NEXT_HOST
+    }
+
+    if ((Get-RequestedAccessMode) -eq "tailscale") {
+        return "0.0.0.0"
+    }
+
+    return "127.0.0.1"
+}
+
+function Should-ForceRestart {
+    return [string]$env:CONTROL_CENTER_NEXT_FORCE_RESTART -eq "1"
+}
+
 function Acquire-StartupMutex {
     $mutex = New-Object System.Threading.Mutex($false, $script:StartupMutexName)
     $lockTaken = $false
@@ -113,8 +156,17 @@ function Acquire-StartupMutex {
 }
 
 function Reuse-ExistingBackend {
+    if (Should-ForceRestart) {
+        return $false
+    }
+
     $state = Read-State
     if (-not $state -or -not $state.port) {
+        return $false
+    }
+
+    $requestedAccessMode = Get-RequestedAccessMode
+    if ($state.accessMode -and [string]$state.accessMode -ne $requestedAccessMode) {
         return $false
     }
 
@@ -130,12 +182,39 @@ function Reuse-ExistingBackend {
     return $true
 }
 
-function Save-State([int]$Port, [int]$ProcessId) {
+function Save-State([int]$Port, [int]$ProcessId, [string]$AccessMode, [string]$BindHost) {
     [ordered]@{
         port = $Port
         pid = $ProcessId
         method = "Start-Process"
+        accessMode = $AccessMode
+        host = $BindHost
     } | ConvertTo-Json | Set-Content -Path $script:StateFile -Encoding utf8
+}
+
+function Stop-ExistingBackend {
+    $state = Read-State
+    if ($state -and $state.pid) {
+        try {
+            Stop-Process -Id ([int]$state.pid) -Force -ErrorAction SilentlyContinue
+        }
+        catch {
+        }
+    }
+
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -match '^python(?:w)?\.exe$' -and
+            $_.CommandLine -and
+            $_.CommandLine -like '*run_control_center_next.py*'
+        } |
+        ForEach-Object {
+            try {
+                Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+            }
+            catch {
+            }
+        }
 }
 
 function Get-BrowserPath {
@@ -174,12 +253,14 @@ function Start-Backend([int]$Port) {
         CONTROL_CENTER_NEXT_FRONTEND_DIST = $env:CONTROL_CENTER_NEXT_FRONTEND_DIST
         LOCAL_QWEN_HOME = $env:LOCAL_QWEN_HOME
     }
+    $accessMode = Get-RequestedAccessMode
+    $bindHost = Get-RequestedHost
 
     try {
         $env:CONTROL_CENTER_NEXT_TARGET_PLATFORM = "windows"
         $env:CONTROL_CENTER_NEXT_UI_PORT = "$Port"
-        $env:CONTROL_CENTER_NEXT_ACCESS_MODE = "local-only"
-        $env:CONTROL_CENTER_NEXT_HOST = "127.0.0.1"
+        $env:CONTROL_CENTER_NEXT_ACCESS_MODE = $accessMode
+        $env:CONTROL_CENTER_NEXT_HOST = $bindHost
         $env:CONTROL_CENTER_NEXT_FRONTEND_DIST = $frontendDist
         $env:LOCAL_QWEN_HOME = $localQwenHome
 
@@ -196,7 +277,7 @@ function Start-Backend([int]$Port) {
         }
     }
 
-    Save-State -Port $Port -ProcessId $process.Id
+    Save-State -Port $Port -ProcessId $process.Id -AccessMode $accessMode -Host $bindHost
 }
 
 Set-Location $script:Root
@@ -206,6 +287,10 @@ Ensure-FrontendBuild
 
 $startupMutex = Acquire-StartupMutex
 try {
+    if (Should-ForceRestart) {
+        Stop-ExistingBackend
+    }
+
     if (Reuse-ExistingBackend) {
         exit 0
     }
