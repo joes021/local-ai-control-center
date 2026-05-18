@@ -1,3 +1,20 @@
+v2.23.3
+- Fixed Linux installer final start so it stops any already-running Control Center instance before launching the new one with freshly chosen settings.
+- This prevents old local-only Linux sessions from being silently reused during install and lets access-mode changes take effect immediately.
+
+v2.23.2
+- Fixed Linux installer first-start behavior so it passes the chosen access mode into the initial launcher run before the venv exists.
+- Linux installer auto-start now suppresses browser opening during headless/SSH installs, so finish no longer hangs on xdg-open.
+- Linux installer still reports the actual backend port from runtime-state instead of assuming 3210.
+
+v2.23.1
+- Fixed Linux installer auto-start reporting so it reads the actual backend port from runtime-state instead of assuming 3210.
+- Linux installer now reports the real Control Center URL after install even when the default port is already occupied.
+
+v2.23.0
+- Linux installer now auto-starts Control Center Next after a successful install and waits for health before reporting finish.
+- Linux launcher now reads runtime state from LOCAL_QWEN_HOME, so installed access mode and runtime state are honored consistently.
+
 v2.22.2
 - Fixed Linux installer OpenCode detection so existing installs in ~/.local/bin, npm prefix bin, and similar locations are accepted.
 - Unblocks successful x86_64 Ubuntu installer runs on systems where OpenCode is installed outside the current shell PATH.

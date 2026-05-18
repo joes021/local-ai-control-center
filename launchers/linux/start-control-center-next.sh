@@ -6,7 +6,8 @@ ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BACKEND_DIR="$ROOT/backend"
 FRONTEND_DIR="$ROOT/frontend"
 VENV_DIR="$ROOT/.venv"
-STATE_DIR="$ROOT/state"
+LOCAL_QWEN_HOME_ROOT="${LOCAL_QWEN_HOME:-$ROOT}"
+STATE_DIR="$LOCAL_QWEN_HOME_ROOT/state"
 
 LOCAL_HOST="127.0.0.1"
 read_runtime_access_mode() {
@@ -37,6 +38,7 @@ END_PORT="${CONTROL_CENTER_NEXT_END_PORT:-3299}"
 HEALTH_PATH="/api/health"
 STATE_FILE="$STATE_DIR/runtime-state.json"
 UNIT_NAME="${CONTROL_CENTER_NEXT_UNIT_NAME:-control-center-next}"
+SKIP_OPEN="${CONTROL_CENTER_NEXT_SKIP_OPEN:-0}"
 
 mkdir -p "$STATE_DIR"
 
@@ -75,6 +77,16 @@ wait_for_health() {
     sleep 1
   done
   return 1
+}
+
+can_open_browser() {
+  if [ "$SKIP_OPEN" = "1" ]; then
+    return 1
+  fi
+  if ! command -v xdg-open >/dev/null 2>&1; then
+    return 1
+  fi
+  [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ] || [ "${XDG_SESSION_TYPE:-}" = "x11" ] || [ "${XDG_SESSION_TYPE:-}" = "wayland" ]
 }
 
 read_state_field() {
@@ -118,10 +130,10 @@ reuse_existing_backend() {
   fi
 
   echo "Postojeci backend je vec aktivan na: ${existing_url}"
-  if command -v xdg-open >/dev/null 2>&1; then
+  if can_open_browser; then
     xdg-open "$existing_url" >/dev/null 2>&1 || true
   else
-    echo "xdg-open nije pronadjen. Otvori rucno: ${existing_url}"
+    echo "Automatsko otvaranje browsera nije dostupno u ovom Linux session-u. Otvori rucno: ${existing_url}"
   fi
   return 0
 }
@@ -199,10 +211,10 @@ if ! wait_for_health "$HEALTH_URL"; then
   exit 1
 fi
 
-if command -v xdg-open >/dev/null 2>&1; then
+if can_open_browser; then
   xdg-open "$URL" >/dev/null 2>&1 || true
 else
-  echo "xdg-open nije pronadjen. Otvori rucno: ${URL}"
+  echo "Automatsko otvaranje browsera nije dostupno u ovom Linux session-u. Otvori rucno: ${URL}"
 fi
 
 echo "Control Center Next je dostupan na: ${URL}"

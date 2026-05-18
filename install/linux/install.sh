@@ -179,6 +179,70 @@ EOF
   printf '%s\n' "$path"
 }
 
+wait_for_control_center_health() {
+  local url="$1"
+  local attempts="${2:-30}"
+  local delay_seconds="${3:-1}"
+  local i
+  for i in $(seq 1 "$attempts"); do
+    if curl --silent --fail "$url/api/health" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$delay_seconds"
+  done
+  return 1
+}
+
+read_runtime_port() {
+  if [ ! -f "$STATE_DIR/runtime-state.json" ]; then
+    return 1
+  fi
+  python3 - <<'PY' "$STATE_DIR/runtime-state.json"
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    raise SystemExit(1)
+
+port = data.get("port")
+if port is None:
+    raise SystemExit(1)
+print(port)
+PY
+}
+
+stop_existing_control_center_service() {
+  systemctl --user stop control-center-next >/dev/null 2>&1 || true
+  systemctl --user reset-failed control-center-next >/dev/null 2>&1 || true
+  pkill -f 'uvicorn backend.app.main:app' >/dev/null 2>&1 || true
+  pkill -f 'start-control-center-next.sh' >/dev/null 2>&1 || true
+  pkill -f 'launch-local-ai-control-center.sh' >/dev/null 2>&1 || true
+}
+
+start_control_center_service() {
+  local wrapper_path="$1"
+  local runtime_port="3210"
+  local local_url=""
+  if [ ! -x "$wrapper_path" ]; then
+    return 1
+  fi
+  stop_existing_control_center_service
+  CONTROL_CENTER_NEXT_ACCESS_MODE="$ACCESS_MODE" \
+  CONTROL_CENTER_NEXT_SKIP_OPEN=1 \
+  "$wrapper_path" >/dev/null 2>&1 || true
+  runtime_port="$(read_runtime_port || printf '3210')"
+  local_url="http://127.0.0.1:${runtime_port}"
+  if wait_for_control_center_health "$local_url" 45 1; then
+    printf '%s\n' "$local_url"
+    return 0
+  fi
+  return 1
+}
+
 write_desktop_entry() {
   local wrapper="$1"
   mkdir -p "$DESKTOP_DIR"
@@ -232,6 +296,7 @@ TURBO_STATUS="$(ensure_turboquant)"
 LLAMA_BIN="$APPS_DIR/llama.cpp/build/bin/llama-server"
 WRAPPER_PATH="$(write_launcher_wrapper)"
 write_desktop_entry "$WRAPPER_PATH"
+STARTED_CONTROL_CENTER_URL=""
 
 cat > "$INSTALL_STATE_PATH" <<EOF
 {
@@ -279,6 +344,30 @@ cat > "$INSTALL_REPORT_PATH" <<EOF
 }
 EOF
 
+if STARTED_CONTROL_CENTER_URL="$(start_control_center_service "$WRAPPER_PATH")"; then
+  python3 - <<'PY' "$INSTALL_REPORT_PATH" "$STARTED_CONTROL_CENTER_URL"
+import json, sys
+path, local_url = sys.argv[1:3]
+with open(path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+data["controlCenterStarted"] = True
+data["localUrl"] = local_url
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+PY
+else
+  python3 - <<'PY' "$INSTALL_REPORT_PATH"
+import json, sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+data["controlCenterStarted"] = False
+data["startWarning"] = "Control Center nije automatski potvrden kroz health check posle instalacije."
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+PY
+fi
+
 echo "Install report:"
 echo "Edition: $INSTALL_VARIANT"
 echo "Control Center: OK"
@@ -288,6 +377,11 @@ echo "TurboQuant: $TURBO_STATUS"
 echo "Access mode: $ACCESS_MODE"
 echo "Install root: $WORKSPACE_ROOT"
 echo "Launcher: $WRAPPER_PATH"
+if [ -n "$STARTED_CONTROL_CENTER_URL" ]; then
+  echo "Control Center URL: $STARTED_CONTROL_CENTER_URL"
+else
+  echo "Control Center URL: start nije potvrdjen automatski"
+fi
 
 if [ "$LLAMA_OK" != "true" ] || [ "$OPENCODE_OK" != "true" ]; then
   echo "Obavezne komponente nisu spremne." >&2
