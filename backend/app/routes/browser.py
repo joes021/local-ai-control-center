@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from backend.app.services.browser_catalog_service import load_catalog_payload, refresh_catalog
 from backend.app.services.compatibility_service import check_model_compatibility
-from backend.app.services.models_service import add_hf_model, add_unsloth_model, load_models_payload
+from backend.app.services.models_service import add_hf_model, add_unsloth_model, download_model, load_models_payload
 
 
 router = APIRouter()
@@ -64,6 +64,34 @@ class CheckCompatibilityRequest(BaseModel):
 @router.post("/api/browser/catalog/check-compatibility")
 def browser_check_compatibility(payload: CheckCompatibilityRequest) -> dict[str, object]:
     return check_model_compatibility(model_id=payload.modelId)
+
+
+class DownloadCatalogModelRequest(BaseModel):
+    source: str
+    repoId: str
+    filename: str
+    label: str = ""
+    family: str = "Custom"
+
+
+@router.post("/api/browser/catalog/download")
+def browser_download(payload: DownloadCatalogModelRequest) -> dict[str, object]:
+    add_result = add_catalog_model(
+        source=payload.source,
+        repo_id=payload.repoId,
+        filename=payload.filename,
+        label=payload.label,
+        family=payload.family,
+    )
+    local_model_id = str(add_result.get("localModelId", "") or "")
+    if not local_model_id:
+        return {
+            "status": "error",
+            "action": "browser-download",
+            "summary": "Model je dodat u katalog, ali lokalni model ID nije razresen za download.",
+            "details": {"returncode": 1, "stdout": "", "stderr": "localModelId missing"},
+        }
+    return download_model(local_model_id)
 
 
 def _resolve_local_model_id(source: str, filename: str) -> str:

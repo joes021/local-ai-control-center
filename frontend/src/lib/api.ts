@@ -113,6 +113,16 @@ export async function downloadBrowserModel(modelId: string): Promise<ActionResul
   return postJson<{ modelId: string }, ActionResult>("/api/models/download", { modelId });
 }
 
+export async function downloadBrowserCatalogModel(payload: {
+  source: string;
+  repoId: string;
+  filename: string;
+  label: string;
+  family: string;
+}): Promise<ActionResult> {
+  return postJson<typeof payload, ActionResult>("/api/browser/catalog/download", payload);
+}
+
 export async function checkBrowserCompatibility(modelId: string): Promise<BrowserCompatibilityPayload> {
   return postJson<CompatibilityCheckRequest, BrowserCompatibilityPayload>("/api/compatibility/check", {
     catalogModelId: modelId,

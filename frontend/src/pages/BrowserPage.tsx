@@ -7,6 +7,7 @@ import { ModelDownloadProgressCard } from "../components/ModelDownloadProgressCa
 import {
   addBrowserModelToLocal,
   downloadBrowserModel,
+  downloadBrowserCatalogModel,
   fetchBrowserCatalog,
   fetchDownloadProgress,
   refreshBrowserCatalog,
@@ -179,9 +180,10 @@ function buildItem(record: Record<string, unknown>): BrowserCatalogItem {
   const model = readString(record.model || record.label || record.name || record.title, "Unknown model");
   const family = readString(record.family || record.modelFamily || record.architecture, "Unknown");
   const quantization = readString(record.quantization || record.quant || record.gguf || record.variant, "Unknown");
-  const sizeBytes = readNumber(
-    record.sizeBytes || record.fileSizeBytes || record.bytes || record.approxSizeBytes,
-  );
+  const sizeBytesGiB = readNumber(record.approxSizeGiB || record.sizeGiB);
+  const sizeBytes =
+    readNumber(record.sizeBytes || record.fileSizeBytes || record.bytes || record.approxSizeBytes) ??
+    (sizeBytesGiB === null ? null : Math.round(sizeBytesGiB * 1024 ** 3));
   const sizeLabel =
     readString(record.sizeLabel || record.fileSizeLabel || record.approxSize || record.size, "") ||
     (sizeBytes === null ? "Unknown" : `${(sizeBytes / 1024 ** 3).toFixed(1)} GiB`);
@@ -218,6 +220,38 @@ function buildItem(record: Record<string, unknown>): BrowserCatalogItem {
     likes: readNumber(record.likes || record.likeCount || record.stars),
     addedToLocal: Boolean(record.addedToLocal || record.inLocalCatalog || record.local),
     localModelId: readString(record.localModelId || record.modelId || record.local_id) || null,
+  };
+}
+
+function buildRefreshActionResult(source: string | undefined, payload: BrowserCatalogPayload): ActionResult {
+  const sourceLabelText =
+    !source || source === "all" ? "internet" : source === "huggingface" ? "Hugging Face" : source === "unsloth" ? "Unsloth" : source;
+  const count = Number(payload.refresh.counts?.all ?? 0);
+  const warningCount = payload.refresh.warnings.length;
+  const errorCount = payload.refresh.errors.length;
+  const summaryParts = [`Catalog refresh zavrsen za ${sourceLabelText}.`, `Modela: ${count}.`];
+  if (warningCount > 0) {
+    summaryParts.push(`Warnings: ${warningCount}.`);
+  }
+  if (errorCount > 0) {
+    summaryParts.push(`Errors: ${errorCount}.`);
+  }
+  const detailsLines = [
+    `Last refresh: ${payload.refresh.lastRefresh || "--"}`,
+    `HF: ${String(payload.refresh.counts?.huggingface ?? 0)}`,
+    `Unsloth: ${String(payload.refresh.counts?.unsloth ?? 0)}`,
+    ...(warningCount ? ["", "Warnings:", ...payload.refresh.warnings] : []),
+    ...(errorCount ? ["", "Errors:", ...payload.refresh.errors] : []),
+  ];
+  return {
+    status: errorCount ? "error" : "ok",
+    action: "browser-refresh",
+    summary: summaryParts.join(" "),
+    details: {
+      returncode: errorCount ? 1 : 0,
+      stdout: detailsLines.join("\n"),
+      stderr: errorCount ? payload.refresh.errors.join("\n") : "",
+    },
   };
 }
 
@@ -482,9 +516,10 @@ export function BrowserPage() {
     });
 
     try {
-      const refreshResult = await refreshBrowserCatalog(source);
-      setResult(refreshResult);
-      await loadCatalog();
+      const refreshPayload = normalizeCatalogPayload((await refreshBrowserCatalog(source)) as BrowserCatalogEnvelope);
+      setCatalog(refreshPayload);
+      setResult(buildRefreshActionResult(source, refreshPayload));
+      setError(null);
     } catch (reason: unknown) {
       const message = reason instanceof Error ? reason.message : "Refresh from internet failed.";
       setResult({
@@ -562,6 +597,39 @@ export function BrowserPage() {
       const downloadResult = await downloadBrowserModel(modelId);
       setResult(downloadResult);
       setDownloadOffer(null);
+    } catch (reason: unknown) {
+      const message = reason instanceof Error ? reason.message : "Download failed.";
+      setResult({
+        status: "error",
+        action: "browser-download",
+        summary: message,
+        details: { returncode: 1, stdout: "", stderr: message },
+      });
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handleDirectBrowserDownload(item: BrowserCatalogItem) {
+    setPendingAction(`download-${item.id}`);
+    setResult({
+      status: "pending",
+      action: "browser-download",
+      summary: `Starting download for ${item.model}...`,
+      details: { returncode: 0, stdout: "", stderr: "" },
+    });
+
+    try {
+      const downloadResult = await downloadBrowserCatalogModel({
+        source: item.source,
+        repoId: item.repo,
+        filename: item.filename,
+        label: item.model,
+        family: item.family,
+      });
+      setResult(downloadResult);
+      setDownloadOffer(null);
+      await loadCatalog();
     } catch (reason: unknown) {
       const message = reason instanceof Error ? reason.message : "Download failed.";
       setResult({
@@ -817,8 +885,8 @@ export function BrowserPage() {
             <div className="inline-actions">
               <button
                 type="button"
-                disabled={Boolean(pendingAction) || !selectedItem.localModelId}
-                onClick={() => void handleDownload(selectedItem.localModelId || selectedItem.id, selectedItem.model)}
+                disabled={Boolean(pendingAction)}
+                onClick={() => void handleDirectBrowserDownload(selectedItem)}
               >
                 Download
               </button>
@@ -889,6 +957,29 @@ export function BrowserPage() {
                     <td>
                       <strong>{item.model}</strong>
                       <div className="browser-subline">{item.filename || item.repo || item.id}</div>
+                      <div className="inline-actions compact-actions">
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          disabled={Boolean(pendingAction)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleDirectBrowserDownload(item);
+                          }}
+                        >
+                          Download
+                        </button>
+                        {item.sourceUrl ? (
+                          <a
+                            href={item.sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            Open model page
+                          </a>
+                        ) : null}
+                      </div>
                     </td>
                     <td>{item.family}</td>
                     <td className="browser-source-cell">

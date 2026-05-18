@@ -72,6 +72,42 @@ class BrowserRouteTests(unittest.TestCase):
             family="Qwen",
         )
 
+    def test_browser_download_route_registers_model_then_starts_download(self):
+        from backend.app.main import app
+        from fastapi.testclient import TestClient
+
+        add_result = {
+            "status": "ok",
+            "summary": "Model dodat.",
+            "localModelId": "unsloth-demo.gguf",
+        }
+        download_result = {
+            "status": "ok",
+            "action": "models-download",
+            "summary": "Download pokrenut.",
+            "details": {"returncode": 0, "stdout": "", "stderr": ""},
+        }
+        with (
+            patch("backend.app.routes.browser.add_catalog_model", return_value=add_result) as add_service,
+            patch("backend.app.routes.browser.download_model", return_value=download_result) as download_service,
+        ):
+            client = TestClient(app)
+            response = client.post(
+                "/api/browser/catalog/download",
+                json={
+                    "source": "unsloth",
+                    "repoId": "unsloth/Qwen3.6-35B-A3B-GGUF",
+                    "filename": "Qwen3.6-35B-A3B-UD-IQ2_XXS.gguf",
+                    "label": "Qwen3.6 35B",
+                    "family": "Qwen",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["summary"], "Download pokrenut.")
+        add_service.assert_called_once()
+        download_service.assert_called_once_with("unsloth-demo.gguf")
+
 
 if __name__ == "__main__":
     unittest.main()

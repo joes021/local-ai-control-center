@@ -172,12 +172,15 @@ def apply_opencode_settings(payload: dict[str, object]) -> dict[str, object]:
 
 def open_opencode(profile: str = "") -> dict[str, object]:
     if get_target_platform() != "windows":
+        terminal_launcher = _resolve_linux_terminal_launcher_script()
         launcher_script = _resolve_linux_opencode_launcher_script()
+        if not terminal_launcher:
+            return _result("error", "open-opencode", "Linux terminal launcher nije pronadjen za OpenCode.")
         if not launcher_script:
             return _result("error", "open-opencode", "OpenCode launcher nije pronadjen na Linuxu.")
         try:
             subprocess.Popen(  # noqa: S603
-                ["bash", launcher_script, profile or ""],
+                ["bash", terminal_launcher, launcher_script, profile or ""],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
@@ -244,6 +247,18 @@ def _resolve_linux_opencode_launcher_script() -> str:
         home / "launchers" / "start-opencode.sh",
         home / "control-center-next" / "install" / "linux" / "start-opencode.sh",
         detect_local_qwen_repo_fallback() / "launcher" / "linux" / "start-opencode.sh",
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    return ""
+
+
+def _resolve_linux_terminal_launcher_script() -> str:
+    home = detect_local_qwen_home()
+    candidates = [
+        home / "launchers" / "desktop-launch.sh",
+        detect_local_qwen_repo_fallback() / "launcher" / "linux" / "desktop-launch.sh",
     ]
     for candidate in candidates:
         if candidate.is_file():

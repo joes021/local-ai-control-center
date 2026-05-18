@@ -119,6 +119,7 @@ def _normalize_model_entry(
 ) -> dict[str, object]:
     quantization = _extract_quantization(filename)
     approx_size_gib = _to_gib(sibling.get("size"))
+    size_bytes = _to_int(sibling.get("size"))
     family = _guess_family(repo_id, filename)
     mtp_status = "has-mtp" if _has_mtp(repo_id, filename) else ("no-mtp" if source == "unsloth" else "unknown")
     context_window = _guess_context_window(repo_id, filename)
@@ -136,6 +137,8 @@ def _normalize_model_entry(
         "repoId": repo_id,
         "filename": filename,
         "quantization": quantization,
+        "sizeBytes": size_bytes,
+        "sizeLabel": f"{approx_size_gib:.1f} GiB" if approx_size_gib is not None else "Unknown",
         "approxSizeGiB": approx_size_gib,
         "publishedAt": published_at,
         "lastUpdated": updated_at,
@@ -222,6 +225,16 @@ def _to_gib(size_bytes: object) -> float | None:
         return round(float(size_bytes) / (1024 ** 3), 2)
     except (TypeError, ValueError):
         return None
+
+
+def _to_int(value: object) -> int | None:
+    try:
+        if value in (None, ""):
+            return None
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
 
 
 def _mtp_label(status: str) -> str:

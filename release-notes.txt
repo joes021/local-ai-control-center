@@ -1,72 +1,27 @@
+v2.24.6
+- Browser refresh vise ne rusi ekran kada se klikne `Refresh from internet`; refresh payload se sada prikazuje kroz bezbedan rezultat umesto kroz pogresan ActionResult shape.
+- Browser tabela sada dobija stvarne velicine (`sizeBytes` / `sizeLabel`) iz source kataloga, pa GGUF fajlovi vise ne zavrsavaju kao `Unknown` kada API vrati poznatu velicinu.
+- Browser download sada radi i bez prethodnog rucnog `Add to local catalog`: backend registruje model pa odmah pokrece download tok.
+- Iz same Browser tabele sada postoji direktan link `Open model page` ka Hugging Face / Unsloth stranici modela.
+- Linux installer vise ne pregazi vec aktivan model ako je sistem vec imalo zdravo aktivno runtime stanje; bootstrap model postaje aktivan samo kada aktivni model nije vec razresen.
+- Linux `OpenCode` pokretanje iz Control Center-a sada ide kroz `desktop-launch.sh`, tako da se TUI zaista otvara u terminal emulatoru umesto da se poziv izgubi u pozadini.
+
+v2.24.5
+- Linux installer model bootstrap vise ne zavisi od legacy `manage-models.sh` mapiranja za obavezni bootstrap korak, nego direktno skida iz zajednickog recommended-models kataloga.
+- Linux `OpenCode` launch iz Control Center-a sada koristi isti `start-opencode.sh` launcher tok koji radi i pri rucnom terminal pokretanju, umesto sirovog `opencode` executable poziva.
+- GitHub storefront i release linkovi su poravnati na `v2.24.5`.
+
+v2.24.4
+- Linux `.run` installer vise ne radi los `GUI pa opet TUI` tok; GUI i fallback su sada razdvojeni.
+- Linux dependency bootstrap vise ne pokusava slepo konfliktni `apt install nodejs npm` na NodeSource sistemima.
+
 v2.24.3
-- Windows desktop shortcut creation sada eksplicitno dodeljuje `control-center.ico` i `opencode-local-qwen.ico`, pa installer više ne ostavlja generičke prečice bez naših ikonica.
+- Windows desktop shortcut creation sada eksplicitno dodeljuje `control-center.ico` i `opencode-local-qwen.ico`, pa installer vise ne ostavlja genericke precice bez nasih ikonica.
 
 v2.24.2
-- Windows installer više ne koristi nepostojeću Inno Setup konstantu `{userprofile}`.
-- Setup sada bezbedno rešava `LocalQwenHome` kroz `USERPROFILE` sa fallback putanjom, pa instalacija više ne puca na koraku `ssPostInstall`.
+- Windows installer vise ne koristi nepostojecu Inno Setup konstantu `{userprofile}`.
+- Setup sada bezbedno resava `LocalQwenHome` kroz `USERPROFILE` sa fallback putanjom, pa instalacija vise ne puca na koraku `ssPostInstall`.
 
 v2.24.1
 - Windows installer sada registruje preporucene Unsloth modele u legacy katalog pre bootstrap download-a.
 - Bootstrapped model se automatski sinhronizuje nazad u aktivni install root, pa first-run probe vise ne pada na Windows clean install toku.
-
-v2.23.7
-- Windows installer sada pakuje legacy Windows launchere i koristi ih za runtime auto-heal kada posle instalacije nema zdravog `llama.cpp` servera.
-- Windows launcher sada poštuje izabrani `access mode`, ume da forsira restart i čuva runtime state sa `accessMode` i `host` vrednostima.
-- Završni Windows installer ekran sada čita `install-summary.txt` i prikazuje stvarni rezultat instalacije umesto samo sirovog exit koda.
-
-v2.23.6
-- Linux installer sada pakuje legacy launchere direktno u payload umesto da zavisi od spoljnog support repo putanje tokom instalacije.
-- Installer sada cuva i obnavlja prethodni runtime/model kontekst, prepoznaje zdrave portove i po potrebi pokrece legacy server launcher.
-- Potvrdjen je end-to-end smoke install na Ubuntu x86_64 i Ubuntu arm64: x86_64 sada prepoznaje model i TurboQuant, a arm64 podize zdrav runtime i OpenCode odgovara na upite.
-
-v2.23.3
-- Fixed Linux installer final start so it stops any already-running Control Center instance before launching the new one with freshly chosen settings.
-- This prevents old local-only Linux sessions from being silently reused during install and lets access-mode changes take effect immediately.
-
-v2.23.2
-- Fixed Linux installer first-start behavior so it passes the chosen access mode into the initial launcher run before the venv exists.
-- Linux installer auto-start now suppresses browser opening during headless/SSH installs, so finish no longer hangs on xdg-open.
-- Linux installer still reports the actual backend port from runtime-state instead of assuming 3210.
-
-v2.23.1
-- Fixed Linux installer auto-start reporting so it reads the actual backend port from runtime-state instead of assuming 3210.
-- Linux installer now reports the real Control Center URL after install even when the default port is already occupied.
-
-v2.23.0
-- Linux installer now auto-starts Control Center Next after a successful install and waits for health before reporting finish.
-- Linux launcher now reads runtime state from LOCAL_QWEN_HOME, so installed access mode and runtime state are honored consistently.
-
-v2.22.2
-- Fixed Linux installer OpenCode detection so existing installs in ~/.local/bin, npm prefix bin, and similar locations are accepted.
-- Unblocks successful x86_64 Ubuntu installer runs on systems where OpenCode is installed outside the current shell PATH.
-
-v2.22.1
-- Fixed installer root version propagation so installed workspaces and live api/status report the new release correctly.
-- Copied release notes to the workspace root alongside version metadata during install.
-
-v2.22.0
-- Added real wizard-style installer flow for Windows, Ubuntu x86_64, and Ubuntu arm64.
-- Installers now expose edition choice, access mode, and optional runtime component choices.
-- Ubuntu arm64 installer now blocks TurboQuant selection by design because that platform is treated as unsupported for TurboQuant.
-- Unified install flow now carries the legacy full-stack assumptions plus the Control Center Next overlay.
-
-v2.21.0
-- Added multi-platform hybrid installer packaging for Windows, Ubuntu x86_64, and Ubuntu arm64.
-- Installers now target real dependency/runtime readiness instead of only copying UI files.
-- Added packaging metadata support for checksums and support matrix generation.
-v2.23.8
-- Windows installer sada zapisuje `install.log` i završni summary prikazuje i putanju do loga i preporučeni sledeći korak kada recovery nije uspeo.
-- Release automation sada generiše stvarni `support-matrix.json` sa verzijom, release URL-om, artifact imenima i platformskim statusima umesto statičnog kopiranog template-a.
-v2.24.0
-- Installer sada koristi shared katalog sa tri vodjena preporucena modela i cuva izabrani model kao stvarni install contract umesto samo wizard metadata handoff-a.
-- Model bootstrap je podignut na success gate: instalacija sada proverava da li je selected model stvarno prisutan i obara Finish ako bootstrap/download nije spreman.
-- Dodat je first-run probe sa promptom `Reply with exactly OK and nothing else.` i Finish sada zavisi i od stvarnog odgovora modela, ne samo od health porta.
-- Repair tok sada vraca human-readable rezultat i siguran sledeci korak za netehnicke korisnike.
-v2.24.5
-- Linux installer model bootstrap vise ne zavisi od legacy `manage-models.sh` metadata toka, nego selected recommended model skida direktno iz shared kataloga preko Hugging Face/Unsloth izvora.
-- Linux `OpenCode` launch iz Control Center-a sada koristi isti `start-opencode.sh` launcher tok koji radi i pri rucnom terminal pokretanju, umesto sirovog `opencode` executable poziva.
-
-v2.24.4
-- GitHub README, download links i getting-started dokumentacija sada vise ne ostaju zalepljeni na starom `v2.24.2` releasu.
-- Linux GUI installer vise ne pada u drugi tekstualni wizard kada nema podrzan sistemski terminal, nego nastavlja isti install tok bez duplog izbora.
-- Linux dependency korak sada pametnije proverava postojeci `node` i `npm` umesto da na NodeSource sistemima slepo pokusava konfliktni `apt install nodejs npm`.

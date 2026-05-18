@@ -155,6 +155,10 @@ class UiSourceSmokeTests(unittest.TestCase):
         self.assertIn("ModelDownloadProgressCard", content)
         self.assertIn("Download status", download_card)
         self.assertIn("fetchDownloadProgress", content)
+        self.assertIn("/api/browser/catalog/download", (ROOT / "frontend" / "src" / "lib" / "api.ts").read_text(encoding="utf-8"))
+        self.assertIn("Open model page", content)
+        self.assertIn("<a", content)
+        self.assertIn("sourceUrl", content)
         self.assertNotIn("<aside className=\"browser-detail-panel\">", content)
 
     def test_compatibility_modal_contains_live_calculator_actions(self):

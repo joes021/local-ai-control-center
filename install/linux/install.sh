@@ -849,7 +849,7 @@ if not model_file and models_dir.is_dir():
     ggufs = sorted((path for path in models_dir.glob("*.gguf") if path.is_file()), key=lambda p: p.stat().st_size, reverse=True)
     if ggufs:
         model_file = str(ggufs[0])
-if bootstrap_payload.get("selectedModelDownloaded") and bootstrap_payload.get("selectedModelPath"):
+if bootstrap_payload.get("selectedModelDownloaded") and bootstrap_payload.get("selectedModelPath") and not model_file:
     bootstrap_model_path = str(bootstrap_payload.get("selectedModelPath") or "").strip()
     if bootstrap_model_path:
         model_file = bootstrap_model_path

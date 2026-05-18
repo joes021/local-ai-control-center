@@ -24,6 +24,8 @@ class InstallerFirstRunReadinessTests(unittest.TestCase):
         self.assertIn("huggingface_hub", content)
         self.assertIn('repo = str(entry.get("repo"', content)
         self.assertIn('filename = str(entry.get("downloadFile"', content)
+        self.assertIn('if bootstrap_payload.get("selectedModelDownloaded") and bootstrap_payload.get("selectedModelPath") and not model_file:', content)
+        self.assertIn('selected_model_file = Path(model_file).name', content)
 
     def test_models_service_exposes_installer_bootstrap_readiness_helper(self):
         from backend.app.services import models_service
