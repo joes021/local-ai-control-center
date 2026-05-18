@@ -9,7 +9,7 @@
 - Ubuntu arm64: `.run`
 
 Use the latest public release:
-- [v2.24.9](https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.9)
+- [v2.24.10](https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.10)
 
 ### 2. Run the installer
 
@@ -37,7 +37,7 @@ After install, open Local AI Control Center and verify:
 - Ubuntu arm64: `.run`
 
 Koristi latest public release:
-- [v2.24.9](https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.9)
+- [v2.24.10](https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.10)
 
 ### 2. Pokreni installer
 

@@ -1,3 +1,7 @@
+v2.24.10
+- Linux repo fallback sada sadrzi `show-logs.sh` i `local_qwen_common.sh`, pa Log Viewer vise ne pada na missing script.
+- Odrzana je kompatibilnost sa novim `~/local-ai-control-center` root-om i starim legacy root-om.
+
 v2.24.9
 - Linux installer vise ne sme da prepozna nasumicni ili mmproj GGUF kao aktivni bootstrap model.
 - Novi podrazumevani Linux install root je `~/local-ai-control-center`, uz fallback na postojeci `~/local-qwen-home`.

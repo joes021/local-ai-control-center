@@ -86,6 +86,13 @@ class LinuxInstallerPayloadTests(unittest.TestCase):
         self.assertIn("SKIP_OPEN", content)
         self.assertIn("can_open_browser", content)
 
+    def test_linux_log_launchers_exist_for_repo_fallback(self):
+        show_logs = (ROOT / "launchers" / "linux" / "show-logs.sh").read_text(encoding="utf-8")
+        common = (ROOT / "launchers" / "linux" / "local_qwen_common.sh").read_text(encoding="utf-8")
+        self.assertIn("Local AI Control Center log viewer", show_logs)
+        self.assertIn("get_local_qwen_root", common)
+        self.assertIn("local-ai-control-center", common)
+
     def test_linux_builder_packages_legacy_launchers(self):
         content = (ROOT / "packaging" / "linux" / "build-run-installer.sh").read_text(encoding="utf-8")
         self.assertIn('"$payload_dir/legacy-launchers"', content)
