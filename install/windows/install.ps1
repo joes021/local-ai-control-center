@@ -32,6 +32,7 @@ $assetsDir = Join-Path $appRoot "assets\icons"
 $installStatePath = Join-Path $stateDir "install-state.json"
 $installReportPath = Join-Path $stateDir "install-report.json"
 $installSummaryPath = Join-Path $stateDir "install-summary.txt"
+$installLogPath = Join-Path $stateDir "install.log"
 $settingsPath = Join-Path $stateDir "settings.json"
 $runtimeConfigPath = Join-Path $stateDir "runtime-config.json"
 $runtimeStatePath = Join-Path $stateDir "runtime-state.json"
@@ -70,6 +71,14 @@ function Write-JsonFile {
     )
     Ensure-Dir (Split-Path -Parent $Path)
     $Payload | ConvertTo-Json -Depth 8 | Set-Content -Path $Path -Encoding utf8
+}
+
+function Write-InstallLogLine {
+    param([string]$Message)
+
+    $timestamp = (Get-Date).ToString("s")
+    Ensure-Dir (Split-Path -Parent $installLogPath)
+    Add-Content -Path $installLogPath -Value "[$timestamp] $Message" -Encoding utf8
 }
 
 function Read-JsonFile {
@@ -476,7 +485,8 @@ function Write-InstallSummary {
     param(
         [hashtable]$Components,
         [pscustomobject]$ControlCenterStart,
-        [Nullable[int]]$RuntimePort
+        [Nullable[int]]$RuntimePort,
+        [string[]]$FailedCore
     )
 
     $tailscaleUrl = ""
@@ -513,6 +523,13 @@ function Write-InstallSummary {
     if ($tailscaleUrl) {
         $lines += "Tailscale URL: $tailscaleUrl"
     }
+    $lines += "Install log: $installLogPath"
+    if ($FailedCore.Count -gt 0) {
+        $lines += "Next step: otvori Repair > Repair runtime ili proveri install log."
+    }
+    else {
+        $lines += "Next step: pokreni Local AI Control Center preko desktop shortcut-a ili URL-a iznad."
+    }
     $lines -join "`r`n" | Set-Content -Path $installSummaryPath -Encoding utf8
 }
 
@@ -522,15 +539,23 @@ Ensure-Dir $appsDir
 Ensure-Dir $binDir
 Ensure-Dir $desktopDir
 Ensure-Dir $opencodeWorkspaceDir
+if (Test-Path $installLogPath) {
+    Remove-Item $installLogPath -Force
+}
+Write-InstallLogLine "Installer start: edition=$Edition accessMode=$AccessMode profile=$Profile"
 
 if (-not $SkipDependencies) {
+    Write-InstallLogLine "Dependency bootstrap started."
     Ensure-Command -Name "git" -WingetId "Git.Git" | Out-Null
     $pythonExe = Ensure-Python
     Ensure-Node
+    Write-InstallLogLine "Dependency bootstrap finished."
 } else {
     $pythonExe = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "" }
+    Write-InstallLogLine "Dependency bootstrap skipped by flag."
 }
 
+Write-InstallLogLine "Copying payload into install root."
 Copy-FolderContent -Source (Join-Path $payloadRoot "backend") -Destination (Join-Path $appRoot "backend")
 Copy-FolderContent -Source (Join-Path $payloadRoot "frontend") -Destination (Join-Path $appRoot "frontend")
 Copy-FolderContent -Source (Join-Path $payloadRoot "launchers") -Destination (Join-Path $appRoot "launchers")
@@ -549,10 +574,12 @@ foreach ($file in @("run_control_center_next.py", "README.md", "version.json", "
     }
 }
 
+Write-InstallLogLine "Checking runtime components."
 $opencodeReady = Ensure-OpenCode
 $llamaReady = Ensure-LlamaCpp
 $turboInfo = Ensure-TurboQuant
 $turboServerPath = if ($turboInfo.status -eq "present") { Join-Path $appsDir "llama.cpp-turboquant\build-cuda\bin\llama-server.exe" } else { "" }
+Write-InstallLogLine "Component check finished: OpenCode=$opencodeReady llamaReady=$llamaReady TurboQuant=$($turboInfo.status)"
 
 $launchWrapper = Write-LaunchWrapper
 Write-Shortcut -ShortcutPath (Join-Path $desktopDir "Local AI Control Center.lnk") -TargetPath $launchWrapper
@@ -562,12 +589,15 @@ if ($opencodeReady -and (Resolve-OpenCodePath)) {
 
 $llamaPath = Join-Path $appsDir "llama.cpp\build\bin\llama-server.exe"
 Write-JsonFile -Path $runtimeConfigPath -Payload @{ accessMode = $AccessMode }
+Write-InstallLogLine "Wrote runtime-config.json"
 Update-InstallStateAndSettings -LlamaReady $llamaReady -LlamaPath $llamaPath -TurboServerPath $turboServerPath
 $healthyRuntimePort = Start-LegacyRuntimeIfNeeded
+Write-InstallLogLine "Legacy runtime probe result: port=$healthyRuntimePort"
 Update-InstallStateAndSettings -LlamaReady $llamaReady -LlamaPath $llamaPath -TurboServerPath $turboServerPath
 $healthyRuntimePort = Find-HealthyRuntimePort
 Update-ServiceLifecycle -HealthyPort $healthyRuntimePort
 $controlCenterStart = Start-ControlCenterAndWait -LaunchWrapper $launchWrapper
+Write-InstallLogLine "Control Center start result: started=$($controlCenterStart.Started) url=$($controlCenterStart.Url)"
 $installState = Read-JsonFile $installStatePath
 $effectiveLlamaPath = if ($installState -and $installState.llamaServerExe) { [string]$installState.llamaServerExe } else { $llamaPath }
 $effectiveTurboPath = if ($installState -and $installState.turboServerExe) { [string]$installState.turboServerExe } else { $turboServerPath }
@@ -590,14 +620,14 @@ Write-JsonFile -Path $installReportPath -Payload @{
     runtimePort = $healthyRuntimePort
     components = $components
 }
-Write-InstallSummary -Components $components -ControlCenterStart $controlCenterStart -RuntimePort $healthyRuntimePort
-
 $failedCore = @()
 if (-not $components.controlCenter.ok) { $failedCore += "Control Center" }
 if (-not $controlCenterStart.Started) { $failedCore += "Control Center startup" }
 if (-not $components.llamaCppRuntime.ok) { $failedCore += "llama.cpp" }
 if (-not $healthyRuntimePort) { $failedCore += "runtime health" }
 if (-not $components.openCode.ok) { $failedCore += "OpenCode" }
+Write-InstallSummary -Components $components -ControlCenterStart $controlCenterStart -RuntimePort $healthyRuntimePort -FailedCore $failedCore
+Write-InstallLogLine "Install summary written."
 
 Write-Host "Install report:" -ForegroundColor Cyan
 Write-Host "Edition: $Edition"
@@ -612,6 +642,9 @@ Write-Host "Control Center URL: $($controlCenterStart.Url)"
 Write-Host "Runtime port: $(if ($healthyRuntimePort) { $healthyRuntimePort } else { 'nije potvrdjen' })"
 
 if ($failedCore.Count -gt 0) {
+    Write-InstallLogLine ("Installer failed for required components: " + ($failedCore -join ", "))
     throw ("Instalacija nije uspela za obavezne komponente: " + ($failedCore -join ", "))
 }
+
+Write-InstallLogLine "Installer finished successfully."
 

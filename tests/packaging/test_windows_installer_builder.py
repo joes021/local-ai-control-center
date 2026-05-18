@@ -29,6 +29,8 @@ class WindowsInstallerBuilderTests(unittest.TestCase):
         self.assertIn("Start-LegacyRuntimeIfNeeded", content)
         self.assertIn("Write-InstallSummary", content)
         self.assertIn("support\\launcher\\windows", content)
+        self.assertIn("install.log", content)
+        self.assertIn("Next step:", content)
 
     def test_windows_launcher_honors_access_mode_and_force_restart(self):
         content = (ROOT / "launchers" / "windows" / "start-control-center-next.ps1").read_text(encoding="utf-8")

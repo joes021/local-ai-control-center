@@ -19,6 +19,8 @@ class ReleaseLayoutTests(unittest.TestCase):
         self.assertIn("linux-arm64", content)
         self.assertIn("checksums.txt", content)
         self.assertIn("support-matrix.json", content)
+        self.assertIn("releaseUrl", content)
+        self.assertIn("generatedAt", content)
 
 
 if __name__ == "__main__":

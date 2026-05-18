@@ -40,6 +40,7 @@ $linuxArm64Artifact = Join-Path $distLinux "$($versionData.windowsSetupBaseName)
 $checksumsPath = Join-Path $tempReleaseDir "checksums.txt"
 $supportMatrixPath = Join-Path $tempReleaseDir "support-matrix.json"
 $releaseSummaryPath = Join-Path $tempReleaseDir "release-summary-v$Version.md"
+$releaseUrl = "https://github.com/joes021/local-qwen-control-center-next/releases/tag/v$Version"
 
 function Get-ReleaseSection {
     param(
@@ -60,6 +61,45 @@ function Get-FileHashLine {
     param([string]$Path)
     $hash = Get-FileHash -Algorithm SHA256 -Path $Path
     return "{0} *{1}" -f $hash.Hash.ToLowerInvariant(), [System.IO.Path]::GetFileName($Path)
+}
+
+function New-SupportMatrix {
+    param(
+        [string]$Version,
+        [string]$ReleaseUrl,
+        [string]$WindowsArtifact,
+        [string]$LinuxX64Artifact,
+        [string]$LinuxArm64Artifact
+    )
+
+    return [ordered]@{
+        version = $Version
+        releaseUrl = $ReleaseUrl
+        generatedAt = (Get-Date).ToUniversalTime().ToString("s") + "Z"
+        platforms = [ordered]@{
+            windows = [ordered]@{
+                controlCenter = "required"
+                llamaCpp = "required"
+                openCode = "required"
+                turboQuant = "optional"
+                artifact = [System.IO.Path]::GetFileName($WindowsArtifact)
+            }
+            "linux-x86_64" = [ordered]@{
+                controlCenter = "required"
+                llamaCpp = "required"
+                openCode = "required"
+                turboQuant = "optional"
+                artifact = [System.IO.Path]::GetFileName($LinuxX64Artifact)
+            }
+            "linux-arm64" = [ordered]@{
+                controlCenter = "required"
+                llamaCpp = "required"
+                openCode = "required"
+                turboQuant = "unsupported"
+                artifact = [System.IO.Path]::GetFileName($LinuxArm64Artifact)
+            }
+        }
+    }
 }
 
 if (-not $SkipBuild) {
@@ -88,9 +128,8 @@ New-Item -ItemType Directory -Force -Path $tempReleaseDir | Out-Null
     Get-FileHashLine -Path $linuxArm64Artifact
 ) | Set-Content -Path $checksumsPath -Encoding UTF8
 
-if (Test-Path $supportMatrixTemplatePath) {
-    Copy-Item $supportMatrixTemplatePath $supportMatrixPath -Force
-}
+$supportMatrix = New-SupportMatrix -Version $Version -ReleaseUrl $releaseUrl -WindowsArtifact $windowsArtifact -LinuxX64Artifact $linuxX64Artifact -LinuxArm64Artifact $linuxArm64Artifact
+$supportMatrix | ConvertTo-Json -Depth 8 | Set-Content -Path $supportMatrixPath -Encoding UTF8
 
 $releaseSection = Get-ReleaseSection -Path $releaseNotesPath -Version $Version
 $releaseSummary = @(
