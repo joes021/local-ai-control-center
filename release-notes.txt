@@ -1,3 +1,8 @@
+v2.23.6
+- Linux installer sada pakuje legacy launchere direktno u payload umesto da zavisi od spoljnog support repo putanje tokom instalacije.
+- Installer sada cuva i obnavlja prethodni runtime/model kontekst, prepoznaje zdrave portove i po potrebi pokrece legacy server launcher.
+- Potvrdjen je end-to-end smoke install na Ubuntu x86_64 i Ubuntu arm64: x86_64 sada prepoznaje model i TurboQuant, a arm64 podize zdrav runtime i OpenCode odgovara na upite.
+
 v2.23.3
 - Fixed Linux installer final start so it stops any already-running Control Center instance before launching the new one with freshly chosen settings.
 - This prevents old local-only Linux sessions from being silently reused during install and lets access-mode changes take effect immediately.

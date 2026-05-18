@@ -19,6 +19,8 @@ APP_ROOT="$WORKSPACE_ROOT/control-center-next"
 STATE_DIR="$WORKSPACE_ROOT/state"
 APPS_DIR="$WORKSPACE_ROOT/apps"
 BIN_DIR="$WORKSPACE_ROOT/bin"
+LEGACY_LAUNCHERS_DIR="$WORKSPACE_ROOT/launchers"
+LEGACY_LAUNCHERS_PAYLOAD_DIR="$PAYLOAD_ROOT/legacy-launchers"
 DESKTOP_DIR="${XDG_DESKTOP_DIR:-$HOME/Desktop}"
 INSTALL_STATE_PATH="$STATE_DIR/install-state.json"
 INSTALL_REPORT_PATH="$STATE_DIR/install-report.json"
@@ -97,6 +99,17 @@ resolve_opencode_path() {
     fi
   done
 
+  return 1
+}
+
+detect_healthy_runtime_port() {
+  local port
+  for port in 8091 8081 8080; do
+    if curl --silent --fail "http://127.0.0.1:${port}/health" >/dev/null 2>&1; then
+      printf '%s\n' "$port"
+      return 0
+    fi
+  done
   return 1
 }
 
@@ -296,6 +309,7 @@ copy_dir_content "$PAYLOAD_ROOT/install" "$APP_ROOT/install"
 copy_dir_content "$PAYLOAD_ROOT/config" "$APP_ROOT/config"
 copy_dir_content "$PAYLOAD_ROOT/scripts" "$APP_ROOT/scripts"
 copy_dir_content "$PAYLOAD_ROOT/assets" "$APP_ROOT/assets"
+copy_dir_content "$LEGACY_LAUNCHERS_PAYLOAD_DIR" "$LEGACY_LAUNCHERS_DIR"
 copy_if_exists "$PAYLOAD_ROOT/run_control_center_next.py" "$APP_ROOT/run_control_center_next.py"
 copy_if_exists "$PAYLOAD_ROOT/README.md" "$APP_ROOT/README.md"
 copy_if_exists "$PAYLOAD_ROOT/version.json" "$APP_ROOT/version.json"
@@ -321,60 +335,180 @@ fi
 
 TURBO_STATUS="$(ensure_turboquant)"
 LLAMA_BIN="$APPS_DIR/llama.cpp/build/bin/llama-server"
+TURBO_BIN=""
+for candidate in \
+  "$APPS_DIR/llama.cpp-turboquant/build-cuda/bin/llama-server" \
+  "$APPS_DIR/llama.cpp-turboquant/build-cuda/llama-server"
+do
+  if [ -x "$candidate" ]; then
+    TURBO_BIN="$candidate"
+    break
+  fi
+done
+HEALTHY_RUNTIME_PORT="$(detect_healthy_runtime_port || true)"
 WRAPPER_PATH="$(write_launcher_wrapper)"
 write_desktop_entry "$WRAPPER_PATH"
 STARTED_CONTROL_CENTER_URL=""
 
-cat > "$INSTALL_STATE_PATH" <<EOF
-{
-  "edition": "$INSTALL_VARIANT",
-  "profile": "$PROFILE",
-  "modelId": "none",
-  "modelFile": "",
-  "port": 8091,
-  "llamaServerExe": "$( [ -e "$LLAMA_BIN" ] && printf '%s' "$LLAMA_BIN" )",
-  "turboServerExe": "",
-  "threads": 8,
-  "installRoot": "$WORKSPACE_ROOT",
-  "noMmap": false,
-  "mlock": false
-}
-EOF
+python3 - <<'PY' "$INSTALL_STATE_PATH" "$SETTINGS_PATH" "$WORKSPACE_ROOT" "$PROFILE" "$ACCESS_MODE" "$OPENCODE_WORKSPACE_DIR" "$LLAMA_BIN" "$TURBO_BIN" "$HEALTHY_RUNTIME_PORT"
+import json, os, subprocess, sys
+from pathlib import Path
 
-cat > "$SETTINGS_PATH" <<EOF
-{
-  "edition": "$INSTALL_VARIANT",
-  "profile": "$PROFILE",
-  "accessMode": "$ACCESS_MODE",
-  "llama": {
-    "contextSize": 262144,
-    "maxOutputTokens": 8192,
-    "contextSizeCustomized": false,
-    "maxOutputTokensCustomized": false
-  },
-  "opencode": {
-    "buildSteps": 120,
-    "planSteps": 80,
-    "generalSteps": 100,
-    "exploreSteps": 60,
-    "workingDirectory": "$OPENCODE_WORKSPACE_DIR"
-  },
-  "threads": 8,
-  "gpuLayers": 99,
-  "batch": 2048,
-  "ubatch": 512,
-  "temperature": 0.7,
-  "topP": 0.95,
-  "minP": 0.05,
-  "topK": 40
+install_state_path = Path(sys.argv[1])
+settings_path = Path(sys.argv[2])
+workspace_root = Path(sys.argv[3])
+profile = sys.argv[4]
+access_mode = sys.argv[5]
+opencode_workspace = sys.argv[6]
+llama_bin = sys.argv[7]
+turbo_bin = sys.argv[8]
+healthy_runtime_port = sys.argv[9].strip()
+
+def load_json(path: Path) -> dict:
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+existing_state = load_json(install_state_path)
+existing_settings = load_json(settings_path)
+
+def detect_process_runtime(port_hint: str) -> tuple[str, str]:
+    try:
+        completed = subprocess.run(["ps", "-ef"], capture_output=True, text=True, check=False)
+    except OSError:
+        return "", ""
+    for line in completed.stdout.splitlines():
+        if "llama-server" not in line:
+            continue
+        if port_hint and f"--port {port_hint}" not in line and f":{port_hint}" not in line:
+            continue
+        tokens = line.split()
+        exe = next((token for token in tokens if token.endswith("llama-server")), "")
+        model = ""
+        for idx, token in enumerate(tokens[:-1]):
+            if token == "-m":
+                model = tokens[idx + 1]
+                break
+        if exe or model:
+            return exe, model
+    return "", ""
+
+detected_exe, detected_model = detect_process_runtime(healthy_runtime_port)
+models_dir = workspace_root / "models"
+preferred_model = models_dir / "qwen36-35b-a3b-IQ2_M.gguf"
+
+model_file = str(existing_state.get("modelFile") or "").strip()
+if not model_file and detected_model:
+    model_file = detected_model
+if not model_file and preferred_model.is_file():
+    model_file = str(preferred_model)
+if not model_file and models_dir.is_dir():
+    ggufs = sorted((path for path in models_dir.glob("*.gguf") if path.is_file()), key=lambda p: p.stat().st_size, reverse=True)
+    if ggufs:
+        model_file = str(ggufs[0])
+
+model_id = str(existing_state.get("modelId") or "").strip()
+if model_id in {"", "none"} and model_file:
+    model_id = Path(model_file).name
+if not model_id:
+    model_id = "none"
+
+runtime_port = int(existing_state.get("port") or 0) if str(existing_state.get("port") or "").isdigit() else 0
+if healthy_runtime_port:
+    runtime_port = int(healthy_runtime_port)
+if runtime_port <= 0:
+    runtime_port = 8091
+
+llama_server_exe = str(existing_state.get("llamaServerExe") or "").strip()
+if not llama_server_exe and detected_exe:
+    llama_server_exe = detected_exe
+if not llama_server_exe and llama_bin and Path(llama_bin).exists():
+    llama_server_exe = llama_bin
+
+turbo_server_exe = str(existing_state.get("turboServerExe") or "").strip()
+if not turbo_server_exe and turbo_bin and Path(turbo_bin).exists():
+    turbo_server_exe = turbo_bin
+
+settings = {
+    "edition": existing_settings.get("edition", "unified"),
+    "profile": profile or str(existing_settings.get("profile", "balanced") or "balanced"),
+    "accessMode": access_mode or str(existing_settings.get("accessMode", "local-only") or "local-only"),
+    "llama": {
+        "contextSize": int(existing_settings.get("llama", {}).get("contextSize", 262144) or 262144),
+        "maxOutputTokens": int(existing_settings.get("llama", {}).get("maxOutputTokens", 8192) or 8192),
+        "contextSizeCustomized": bool(existing_settings.get("llama", {}).get("contextSizeCustomized", False)),
+        "maxOutputTokensCustomized": bool(existing_settings.get("llama", {}).get("maxOutputTokensCustomized", False)),
+    },
+    "opencode": {
+        "buildSteps": int(existing_settings.get("opencode", {}).get("buildSteps", 120) or 120),
+        "planSteps": int(existing_settings.get("opencode", {}).get("planSteps", 80) or 80),
+        "generalSteps": int(existing_settings.get("opencode", {}).get("generalSteps", 100) or 100),
+        "exploreSteps": int(existing_settings.get("opencode", {}).get("exploreSteps", 60) or 60),
+        "workingDirectory": str(existing_settings.get("opencode", {}).get("workingDirectory", opencode_workspace) or opencode_workspace),
+    },
+    "threads": int(existing_settings.get("threads", 8) or 8),
+    "gpuLayers": int(existing_settings.get("gpuLayers", 99) or 99),
+    "batch": int(existing_settings.get("batch", 2048) or 2048),
+    "ubatch": int(existing_settings.get("ubatch", 512) or 512),
+    "temperature": float(existing_settings.get("temperature", 0.7) or 0.7),
+    "topP": float(existing_settings.get("topP", 0.95) or 0.95),
+    "minP": float(existing_settings.get("minP", 0.05) or 0.05),
+    "topK": int(existing_settings.get("topK", 40) or 40),
 }
-EOF
+
+install_state = {
+    "edition": existing_state.get("edition", "unified"),
+    "profile": profile or str(existing_state.get("profile", "balanced") or "balanced"),
+    "modelId": model_id,
+    "modelFile": model_file,
+    "port": runtime_port,
+    "llamaServerExe": llama_server_exe,
+    "turboServerExe": turbo_server_exe,
+    "threads": int(existing_state.get("threads", settings["threads"]) or settings["threads"]),
+    "installRoot": str(workspace_root),
+    "noMmap": bool(existing_state.get("noMmap", False)),
+    "mlock": bool(existing_state.get("mlock", False)),
+}
+
+install_state_path.write_text(json.dumps(install_state, ensure_ascii=False, indent=2), encoding="utf-8")
+settings_path.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+PY
 
 cat > "$RUNTIME_CONFIG_PATH" <<EOF
 {
   "accessMode": "$ACCESS_MODE"
 }
 EOF
+
+if [ -x "$LEGACY_LAUNCHERS_DIR/start-server.sh" ] && [ -s "$INSTALL_STATE_PATH" ]; then
+  MODEL_FILE="$(python3 - <<'PY' "$INSTALL_STATE_PATH"
+import json, sys
+print(json.loads(open(sys.argv[1], 'r', encoding='utf-8').read()).get('modelFile', ''))
+PY
+)"
+  if [ -n "$MODEL_FILE" ] && [ ! -n "$HEALTHY_RUNTIME_PORT" ]; then
+    bash "$LEGACY_LAUNCHERS_DIR/start-server.sh" "$PROFILE" >/dev/null 2>&1 || true
+    HEALTHY_RUNTIME_PORT="$(detect_healthy_runtime_port || true)"
+  fi
+fi
+
+if [ -n "$HEALTHY_RUNTIME_PORT" ]; then
+  cat > "$STATE_DIR/server-lifecycle.json" <<EOF
+{
+  "state": "active",
+  "profile": "$PROFILE",
+  "stdout": "",
+  "stderr": "",
+  "reason": "Health endpoint returned OK.",
+  "updatedAt": "$(date +%Y-%m-%dT%H:%M:%S)"
+}
+EOF
+else
+  rm -f "$STATE_DIR/server-lifecycle.json"
+fi
 
 cat > "$INSTALL_REPORT_PATH" <<EOF
 {
@@ -389,7 +523,7 @@ cat > "$INSTALL_REPORT_PATH" <<EOF
     "controlCenter": { "ok": true, "path": "$APP_ROOT" },
     "llamaCppRuntime": { "ok": $LLAMA_OK, "path": "$( [ -e "$LLAMA_BIN" ] && printf '%s' "$LLAMA_BIN" )" },
     "openCode": { "ok": $OPENCODE_OK, "path": "$OPENCODE_PATH" },
-    "turboQuantRuntime": { "ok": false, "status": "$TURBO_STATUS", "path": "" }
+    "turboQuantRuntime": { "ok": $( [ "$TURBO_STATUS" = "present" ] && echo true || echo false ), "status": "$TURBO_STATUS", "path": "$TURBO_BIN" }
   }
 }
 EOF

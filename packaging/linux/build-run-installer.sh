@@ -56,6 +56,7 @@ build_one() {
     "$payload_dir/backend" \
     "$payload_dir/frontend" \
     "$payload_dir/launchers" \
+    "$payload_dir/legacy-launchers" \
     "$payload_dir/install" \
     "$payload_dir/config" \
     "$payload_dir/assets" \
@@ -65,6 +66,7 @@ build_one() {
   cp -R "$REPO_ROOT/backend/." "$payload_dir/backend/"
   cp -R "$REPO_ROOT/frontend/dist" "$payload_dir/frontend/"
   cp -R "$REPO_ROOT/launchers/." "$payload_dir/launchers/"
+  cp -R "$SUPPORT_REPO/launchers/." "$payload_dir/legacy-launchers/"
   cp -R "$REPO_ROOT/install/linux" "$payload_dir/install/"
   cp -R "$SUPPORT_REPO/config/profiles" "$payload_dir/config/"
   cp -R "$SUPPORT_REPO/assets/icons" "$payload_dir/assets/"
