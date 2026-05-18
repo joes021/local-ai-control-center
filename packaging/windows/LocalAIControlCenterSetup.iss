@@ -136,7 +136,7 @@ begin
     else if FieldName = 'label' then
       Result := 'Qwen3.6 35B A3B MTP UD Q4_K_XL'
     else if FieldName = 'download' then
-      Result := 'Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_XL'
+      Result := 'Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf'
     else if FieldName = 'vram' then
       Result := '24 GB'
     else if FieldName = 'option' then

@@ -169,11 +169,84 @@ function Resolve-SelectedModelSelection {
         label = $resolvedLabel
         downloadFile = $resolvedDownloadFile
         vramClass = $resolvedVramClass
+        family = if ($catalogEntry -and $catalogEntry.family) { [string]$catalogEntry.family } else { "" }
+        customSource = if ($catalogEntry -and $catalogEntry.customSource) { [string]$catalogEntry.customSource } else { "" }
+        repo = if ($catalogEntry -and $catalogEntry.repo) { [string]$catalogEntry.repo } else { "" }
+        legacyModelId = ""
         source = $selectionSource
         catalogPath = $recommendedModelsCatalogPath
         defaultModelId = $catalogDefaultModelId
         showMoreModelsAfterInstall = [bool]$ShowMoreModelsAfterInstall
     }
+}
+
+function Register-InstallerSelectedModelWithLegacyCatalog {
+    param([object]$SelectedModelSelection)
+
+    $customSource = [string]$SelectedModelSelection.customSource
+    $repo = [string]$SelectedModelSelection.repo
+    $downloadFile = [string]$SelectedModelSelection.downloadFile
+    $label = [string]$SelectedModelSelection.label
+    $family = [string]$SelectedModelSelection.family
+
+    if ([string]::IsNullOrWhiteSpace($customSource) -or [string]::IsNullOrWhiteSpace($repo) -or [string]::IsNullOrWhiteSpace($downloadFile)) {
+        return $SelectedModelSelection
+    }
+
+    $legacyCommonScript = Join-Path $legacyLaunchersDir "local-qwen-common.ps1"
+    if (-not (Test-Path $legacyCommonScript)) {
+        throw "Legacy common skripta nije pronadjena: $legacyCommonScript"
+    }
+
+    . $legacyCommonScript
+    $registeredModel = switch ($customSource.ToLowerInvariant()) {
+        "unsloth" { Add-UnslothCustomModel -Repo $repo -FileName $downloadFile -Label $label -Family $(if ([string]::IsNullOrWhiteSpace($family)) { "Unsloth" } else { $family }) }
+        "huggingface" { Add-HuggingFaceCustomModel -Repo $repo -FileName $downloadFile -Label $label -Family $(if ([string]::IsNullOrWhiteSpace($family)) { "Custom" } else { $family }) }
+        default { return $SelectedModelSelection }
+    }
+
+    $legacyModelId = if ($registeredModel -and $registeredModel.PSObject.Properties["id"]) { [string]$registeredModel.id } else { "" }
+    if ([string]::IsNullOrWhiteSpace($legacyModelId)) {
+        throw "Registracija legacy modela nije vratila validan id za $downloadFile"
+    }
+
+    Write-InstallLogLine "Legacy catalog registration: source=$customSource repo=$repo legacyModelId=$legacyModelId"
+    $SelectedModelSelection.legacyModelId = $legacyModelId
+    return $SelectedModelSelection
+}
+
+function Sync-BootstrappedModelIntoWorkspace {
+    param([object]$SelectedModelSelection)
+
+    $downloadFile = [string]$SelectedModelSelection.downloadFile
+    if ([string]::IsNullOrWhiteSpace($downloadFile)) {
+        return
+    }
+
+    $workspaceModelPath = Join-Path (Join-Path $workspaceRoot "models") $downloadFile
+    if (Test-Path $workspaceModelPath) {
+        return
+    }
+
+    $fallbackHome = Join-Path $env:USERPROFILE "LocalQwenHome"
+    $candidatePaths = @(
+        (Join-Path $fallbackHome "models\$downloadFile"),
+        (Join-Path $fallbackHome ("models\\llama-cpp\\{0}\\{1}" -f [System.IO.Path]::GetFileNameWithoutExtension($downloadFile), $downloadFile))
+    )
+
+    $resolvedSource = $candidatePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $resolvedSource) {
+        $resolvedSource = Get-ChildItem -Path (Join-Path $fallbackHome "models") -Recurse -Filter $downloadFile -File -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty FullName -First 1
+    }
+
+    if (-not $resolvedSource) {
+        return
+    }
+
+    Ensure-Dir (Split-Path -Parent $workspaceModelPath)
+    Copy-Item -LiteralPath $resolvedSource -Destination $workspaceModelPath -Force
+    Write-InstallLogLine "Synced bootstrapped model into workspace: source=$resolvedSource target=$workspaceModelPath"
 }
 
 function Ensure-Command {
@@ -448,6 +521,19 @@ function Invoke-ModelBootstrap {
         return (Get-ModelBootstrapState -SelectedModelSelection $SelectedModelSelection -InstalledModelFile $installedModelFile -BootstrapStatus "download-skipped")
     }
 
+    $modelIdToDownload = [string]$bootstrapState.selectedModelId
+    if (-not [string]::IsNullOrWhiteSpace([string]$SelectedModelSelection.customSource)) {
+        try {
+            $SelectedModelSelection = Register-InstallerSelectedModelWithLegacyCatalog -SelectedModelSelection $SelectedModelSelection
+            if (-not [string]::IsNullOrWhiteSpace([string]$SelectedModelSelection.legacyModelId)) {
+                $modelIdToDownload = [string]$SelectedModelSelection.legacyModelId
+            }
+        }
+        catch {
+            return (Get-ModelBootstrapState -SelectedModelSelection $SelectedModelSelection -InstalledModelFile (Get-PreferredModelFile) -BootstrapStatus "registration-failed" -BootstrapMessage $_.Exception.Message)
+        }
+    }
+
     $manageModelsScript = Join-Path $legacyLaunchersDir "manage-models.ps1"
     if (-not (Test-Path $manageModelsScript)) {
         $manageModelsScript = Join-Path $launchersDir "manage-models.ps1"
@@ -456,13 +542,15 @@ function Invoke-ModelBootstrap {
         return (Get-ModelBootstrapState -SelectedModelSelection $SelectedModelSelection -InstalledModelFile $installedModelFile -BootstrapStatus "download-script-missing")
     }
 
-    Write-InstallLogLine "Model bootstrap start: modelId=$($bootstrapState.selectedModelId)"
+    Write-InstallLogLine "Model bootstrap start: modelId=$modelIdToDownload"
     try {
-        & (Get-WindowsPowerShellExe) -NoProfile -ExecutionPolicy Bypass -File $manageModelsScript -ModelId $bootstrapState.selectedModelId -Download | Out-Null
+        & (Get-WindowsPowerShellExe) -NoProfile -ExecutionPolicy Bypass -File $manageModelsScript -ModelId $modelIdToDownload -Download | Out-Null
     }
     catch {
         return (Get-ModelBootstrapState -SelectedModelSelection $SelectedModelSelection -InstalledModelFile (Get-PreferredModelFile) -BootstrapStatus "download-failed" -BootstrapMessage $_.Exception.Message)
     }
+
+    Sync-BootstrappedModelIntoWorkspace -SelectedModelSelection $SelectedModelSelection
 
     return (Get-ModelBootstrapState -SelectedModelSelection $SelectedModelSelection -InstalledModelFile (Get-PreferredModelFile) -BootstrapStatus "downloaded")
 }
@@ -860,6 +948,9 @@ Copy-FolderContent -Source (Join-Path $payloadRoot "config") -Destination (Join-
 Copy-FolderContent -Source (Join-Path $payloadRoot "scripts") -Destination (Join-Path $appRoot "scripts")
 Copy-FolderContent -Source (Join-Path $payloadRoot "assets") -Destination (Join-Path $appRoot "assets")
 Copy-FolderContent -Source $legacyLaunchersPayloadDir -Destination $legacyLaunchersDir
+Copy-FolderContent -Source (Join-Path $payloadRoot "support\config\profiles") -Destination (Join-Path $workspaceRoot "config\profiles")
+Copy-FolderContent -Source (Join-Path $payloadRoot "support\scripts") -Destination (Join-Path $workspaceRoot "scripts")
+Copy-FolderContent -Source (Join-Path $payloadRoot "support\assets\icons") -Destination (Join-Path $workspaceRoot "assets\icons")
 foreach ($file in @("run_control_center_next.py", "README.md", "version.json", "release-notes.txt")) {
     $source = Join-Path $payloadRoot $file
     if (Test-Path $source) {

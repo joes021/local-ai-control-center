@@ -9,17 +9,20 @@ MODELS_PATH = ROOT / "install" / "shared" / "recommended-models.json"
 EXPECTED_RECOMMENDED_MODELS = [
     {
         "modelId": "gemma-4-e4b-it-q4-0",
+        "repo": "unsloth/gemma-4-E4B-it-GGUF",
         "downloadFile": "gemma-4-E4B-it-Q4_0.gguf",
         "vramGiB": 6,
     },
     {
         "modelId": "qwen3.6-35b-a3b-ud-iq2-xxs",
+        "repo": "unsloth/Qwen3.6-35B-A3B-GGUF",
         "downloadFile": "Qwen3.6-35B-A3B-UD-IQ2_XXS.gguf",
         "vramGiB": 12,
     },
     {
         "modelId": "qwen3.6-35b-a3b-mtp-ud-q4-k-xl",
-        "downloadFile": "Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_XL",
+        "repo": "unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
+        "downloadFile": "Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
         "vramGiB": 24,
     },
 ]
@@ -40,6 +43,7 @@ class InstallerModelSelectionTests(unittest.TestCase):
         actual_models = [
             {
                 "modelId": entry["modelId"],
+                "repo": entry["repo"],
                 "downloadFile": entry["downloadFile"],
                 "vramGiB": entry["vramClass"]["recommendedGiB"],
             }
@@ -49,12 +53,15 @@ class InstallerModelSelectionTests(unittest.TestCase):
 
         for entry in payload["recommended"]:
             self.assertIsInstance(entry, dict)
-            for key in ("modelId", "label", "description", "downloadFile", "vramClass"):
+            for key in ("modelId", "label", "description", "downloadFile", "vramClass", "customSource", "repo", "family"):
                 self.assertIn(key, entry)
             self.assertIsInstance(entry["modelId"], str)
             self.assertIsInstance(entry["label"], str)
             self.assertIsInstance(entry["description"], str)
             self.assertIsInstance(entry["downloadFile"], str)
+            self.assertIsInstance(entry["repo"], str)
+            self.assertEqual(entry["customSource"], "unsloth")
+            self.assertTrue(entry["downloadFile"].endswith(".gguf"))
             self.assertIsInstance(entry["vramClass"], dict)
             for key in ("label", "minimumGiB", "recommendedGiB"):
                 self.assertIn(key, entry["vramClass"])

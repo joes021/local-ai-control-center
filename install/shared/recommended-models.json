@@ -7,6 +7,9 @@
       "modelId": "gemma-4-e4b-it-q4-0",
       "label": "Gemma 4 E4B Instruct Q4_0",
       "description": "Najbezbedniji podrazumevani izbor za slabije GPU konfiguracije i brz prvi start instalera.",
+      "family": "Gemma",
+      "customSource": "unsloth",
+      "repo": "unsloth/gemma-4-E4B-it-GGUF",
       "downloadFile": "gemma-4-E4B-it-Q4_0.gguf",
       "vramClass": {
         "label": "6 GB",
@@ -18,6 +21,9 @@
       "modelId": "qwen3.6-35b-a3b-ud-iq2-xxs",
       "label": "Qwen3.6 35B A3B UD IQ2_XXS",
       "description": "Balansiran Qwen izbor za korisnike koji hoce veci model uz umeren VRAM budzet.",
+      "family": "Qwen",
+      "customSource": "unsloth",
+      "repo": "unsloth/Qwen3.6-35B-A3B-GGUF",
       "downloadFile": "Qwen3.6-35B-A3B-UD-IQ2_XXS.gguf",
       "vramClass": {
         "label": "12 GB",
@@ -29,7 +35,10 @@
       "modelId": "qwen3.6-35b-a3b-mtp-ud-q4-k-xl",
       "label": "Qwen3.6 35B A3B MTP UD Q4_K_XL",
       "description": "High-end preporuceni profil za sisteme koji ciljaju zakljucanu MTP varijantu i imaju 24 GB VRAM klase.",
-      "downloadFile": "Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_XL",
+      "family": "Qwen",
+      "customSource": "unsloth",
+      "repo": "unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
+      "downloadFile": "Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
       "vramClass": {
         "label": "24 GB",
         "minimumGiB": 24,

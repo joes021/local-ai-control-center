@@ -1,3 +1,7 @@
+v2.24.1
+- Windows installer sada registruje preporucene Unsloth modele u legacy katalog pre bootstrap download-a.
+- Bootstrapped model se automatski sinhronizuje nazad u aktivni install root, pa first-run probe vise ne pada na Windows clean install toku.
+
 v2.23.7
 - Windows installer sada pakuje legacy Windows launchere i koristi ih za runtime auto-heal kada posle instalacije nema zdravog `llama.cpp` servera.
 - Windows launcher sada poštuje izabrani `access mode`, ume da forsira restart i čuva runtime state sa `accessMode` i `host` vrednostima.

@@ -15,7 +15,7 @@ fallback_recommended_models() {
   cat <<'EOF'
 gemma-4-e4b-it-q4-0|Gemma 4 E4B Instruct Q4_0|6 GB|Najbezbedniji podrazumevani izbor za slabije GPU konfiguracije i brz prvi start instalera.|gemma-4-E4B-it-Q4_0.gguf
 qwen3.6-35b-a3b-ud-iq2-xxs|Qwen3.6 35B A3B UD IQ2_XXS|12 GB|Balansiran Qwen izbor za korisnike koji hoce veci model uz umeren VRAM budzet.|Qwen3.6-35B-A3B-UD-IQ2_XXS.gguf
-qwen3.6-35b-a3b-mtp-ud-q4-k-xl|Qwen3.6 35B A3B MTP UD Q4_K_XL|24 GB|High-end preporuceni profil za sisteme koji ciljaju zakljucanu MTP varijantu i imaju 24 GB VRAM klase.|Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_XL
+qwen3.6-35b-a3b-mtp-ud-q4-k-xl|Qwen3.6 35B A3B MTP UD Q4_K_XL|24 GB|High-end preporuceni profil za sisteme koji ciljaju zakljucanu MTP varijantu i imaju 24 GB VRAM klase.|Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf
 EOF
 }
 
