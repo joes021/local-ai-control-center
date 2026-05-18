@@ -73,15 +73,41 @@ ensure_packages() {
   fi
 }
 
+resolve_opencode_path() {
+  local candidate prefix
+  if candidate="$(command -v opencode 2>/dev/null)"; then
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  fi
+
+  prefix="$(npm config get prefix 2>/dev/null || true)"
+  for candidate in \
+    "$prefix/bin/opencode" \
+    "$HOME/.local/bin/opencode" \
+    "$HOME/.npm-global/bin/opencode" \
+    "/usr/local/bin/opencode" \
+    "/usr/bin/opencode"
+  do
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 ensure_opencode() {
   if [ "$INSTALL_OPENCODE" != "1" ]; then
     return 1
   fi
-  if command -v opencode >/dev/null 2>&1; then
+  if resolve_opencode_path >/dev/null 2>&1; then
     return 0
   fi
   npm install -g opencode-ai >/dev/null 2>&1 || true
-  command -v opencode >/dev/null 2>&1
+  resolve_opencode_path >/dev/null 2>&1
 }
 
 ensure_llama() {
@@ -190,7 +216,7 @@ copy_if_exists "$PAYLOAD_ROOT/release-notes.txt" "$WORKSPACE_ROOT/release-notes.
 
 if ensure_opencode; then
   OPENCODE_OK=true
-  OPENCODE_PATH="$(command -v opencode)"
+  OPENCODE_PATH="$(resolve_opencode_path || true)"
 else
   OPENCODE_OK=false
   OPENCODE_PATH=""

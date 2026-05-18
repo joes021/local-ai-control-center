@@ -1,3 +1,7 @@
+v2.22.2
+- Fixed Linux installer OpenCode detection so existing installs in ~/.local/bin, npm prefix bin, and similar locations are accepted.
+- Unblocks successful x86_64 Ubuntu installer runs on systems where OpenCode is installed outside the current shell PATH.
+
 v2.22.1
 - Fixed installer root version propagation so installed workspaces and live api/status report the new release correctly.
 - Copied release notes to the workspace root alongside version metadata during install.
