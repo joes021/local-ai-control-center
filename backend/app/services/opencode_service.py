@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -18,15 +19,17 @@ def load_opencode_status_payload() -> dict[str, object]:
 
     if get_target_platform() != "windows":
         settings = load_settings_payload()
+        executable_path = _resolve_linux_opencode_executable()
+        config_path = Path.home() / ".config" / "opencode" / "opencode.json"
         return {
-            "available": False,
+            "available": bool(executable_path),
             "active": active,
             "instanceCount": len(instances),
             "instances": instances,
-            "configExists": False,
-            "configPath": "",
-            "configDir": "",
-            "executablePath": "",
+            "configExists": config_path.is_file(),
+            "configPath": str(config_path),
+            "configDir": str(config_path.parent),
+            "executablePath": executable_path,
             "workingDirectory": str(settings.get("workingDirectory", "")),
             "buildSteps": int(settings.get("buildSteps", 0) or 0),
             "planSteps": int(settings.get("planSteps", 0) or 0),
@@ -38,7 +41,7 @@ def load_opencode_status_payload() -> dict[str, object]:
             "capabilityModeLabel": _capability_mode_label(capability_mode),
             "profile": str(settings.get("profile", "balanced") or "balanced"),
             "auditRiskLevel": "",
-            "auditSummary": "OpenCode parity backend je za sada aktivan samo na Windowsu.",
+            "auditSummary": "Linux OpenCode status je detektovan lokalno; puna Linux parity konfiguracija jos nije dovedena do Windows nivoa.",
         }
 
     settings = load_settings_payload()
@@ -169,7 +172,31 @@ def apply_opencode_settings(payload: dict[str, object]) -> dict[str, object]:
 
 def open_opencode(profile: str = "") -> dict[str, object]:
     if get_target_platform() != "windows":
-        return _result("error", "open-opencode", "OpenCode launch parity je za sada dostupan samo na Windowsu.")
+        executable_path = _resolve_linux_opencode_executable()
+        if not executable_path:
+            return _result("error", "open-opencode", "OpenCode executable nije pronadjen na Linuxu.")
+        settings = load_settings_payload()
+        working_directory = str(settings.get("workingDirectory", "") or Path.home())
+        try:
+            subprocess.Popen(  # noqa: S603
+                [executable_path],
+                cwd=working_directory if Path(working_directory).is_dir() else None,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError as exc:
+            return _result("error", "open-opencode", str(exc))
+        return {
+            "status": "ok",
+            "action": "open-opencode",
+            "summary": "OpenCode je pokrenut.",
+            "details": {
+                "returncode": 0,
+                "stdout": executable_path,
+                "stderr": "",
+            },
+        }
 
     script_path = _resolve_windows_launcher_script("start-opencode.ps1")
     args: list[str] = []
@@ -204,6 +231,14 @@ def _load_agent_meta() -> dict[str, object]:
     except json.JSONDecodeError:
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _resolve_linux_opencode_executable() -> str:
+    for candidate in ("opencode", "opencode-ai"):
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+    return ""
 
 
 def _detect_opencode_instances() -> list[dict[str, object]]:

@@ -97,12 +97,31 @@ class OpenCodeServiceTests(unittest.TestCase):
                 "load_settings_payload",
                 return_value={"profile": "balanced", "workingDirectory": "/repo"},
             ):
-                payload = opencode_service.load_opencode_status_payload()
+                with mock.patch.object(
+                    opencode_service,
+                    "_resolve_linux_opencode_executable",
+                    return_value="/usr/local/bin/opencode",
+                ):
+                    with mock.patch.object(
+                        opencode_service,
+                        "_detect_opencode_instances",
+                        return_value=[
+                            {
+                                "pid": 2020,
+                                "name": "opencode",
+                                "commandLine": "/usr/local/bin/opencode",
+                            }
+                        ],
+                    ):
+                        payload = opencode_service.load_opencode_status_payload()
 
-        self.assertFalse(payload["available"])
-        self.assertFalse(payload["active"])
-        self.assertEqual(payload["instanceCount"], 0)
-        self.assertEqual(payload["instances"], [])
+        self.assertTrue(payload["available"])
+        self.assertTrue(payload["active"])
+        self.assertEqual(payload["instanceCount"], 1)
+        self.assertEqual(payload["instances"][0]["pid"], 2020)
+        self.assertEqual(payload["executablePath"], "/usr/local/bin/opencode")
+        self.assertEqual(payload["configPath"], str(Path.home() / ".config" / "opencode" / "opencode.json"))
+        self.assertIn("Linux", payload["auditSummary"])
 
     def test_apply_opencode_settings_reports_success_when_save_and_audit_pass(self):
         from backend.app.services import opencode_service
@@ -147,6 +166,21 @@ class OpenCodeServiceTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["action"], "open-opencode")
+
+    def test_open_opencode_on_linux_uses_detected_executable(self):
+        from backend.app.services import opencode_service
+
+        with (
+            mock.patch.dict("os.environ", {"CONTROL_CENTER_NEXT_TARGET_PLATFORM": "linux"}, clear=False),
+            mock.patch.object(opencode_service, "_resolve_linux_opencode_executable", return_value="/usr/local/bin/opencode"),
+            mock.patch.object(opencode_service, "load_settings_payload", return_value={"workingDirectory": "/repo"}),
+            mock.patch.object(opencode_service.subprocess, "Popen") as popen_mock,
+        ):
+            result = opencode_service.open_opencode("balanced")
+
+        self.assertEqual(result["status"], "ok")
+        command = popen_mock.call_args.args[0]
+        self.assertEqual(command[0], "/usr/local/bin/opencode")
 
 
 if __name__ == "__main__":

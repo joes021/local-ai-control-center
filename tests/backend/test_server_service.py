@@ -182,10 +182,14 @@ class ServerServiceTests(unittest.TestCase):
                 "backend.app.services.server_service.get_target_platform",
                 return_value="linux",
             ):
-                result = open_server_web(local_qwen_home=home)
+                with patch("backend.app.services.server_service.subprocess.run") as run_mock:
+                    run_mock.return_value.returncode = 0
+                    run_mock.return_value.stdout = ""
+                    run_mock.return_value.stderr = ""
+                    result = open_server_web(local_qwen_home=home)
 
-        self.assertEqual(result["status"], "unsupported")
-        self.assertIn("nije izdvojen kao poseban stabilan tok", result["summary"])
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("http://127.0.0.1:8091/", result["summary"])
 
     def test_detect_server_pid_matches_requested_port_on_windows(self):
         from backend.app.services.server_service import detect_server_pid

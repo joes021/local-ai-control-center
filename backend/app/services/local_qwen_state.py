@@ -7,7 +7,7 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 from backend.app.services.local_qwen_paths import detect_local_qwen_home
-from backend.app.services.platform_config import get_target_platform
+from backend.app.services.platform_config import get_target_architecture, get_target_platform
 
 
 def load_local_qwen_summary(home: Path | None = None) -> dict[str, str]:
@@ -40,6 +40,12 @@ def build_status_payload(
         "windows": "Windows",
         "linux": "Linux",
     }.get(host_platform, host_platform.capitalize())
+    host_architecture = get_target_architecture()
+    host_architecture_label = {
+        "arm64": "ARM64",
+        "x64": "x64",
+        "arm": "ARM",
+    }.get(host_architecture, host_architecture)
     runtime = summary.get("runtime") or {}
     active_runtime = str(runtime.get("active", "unknown"))
     llama_available = bool(runtime.get("llamaAvailable"))
@@ -63,6 +69,8 @@ def build_status_payload(
     return {
         "hostPlatform": host_platform,
         "hostPlatformLabel": host_platform_label,
+        "hostArchitecture": host_architecture,
+        "hostArchitectureLabel": host_architecture_label,
         "hostShellLabel": f"{host_platform_label} Desktop GUI Shell",
         "version": summary.get("version", "unknown"),
         "health": summary.get("health", "unknown"),

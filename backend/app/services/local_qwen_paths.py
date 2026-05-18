@@ -15,4 +15,14 @@ def detect_local_qwen_home() -> Path:
 
 
 def detect_local_qwen_repo_fallback() -> Path:
-    return Path(r"C:\Users\AzdahaI9\Documents\Local Qwen 3.635Ba3B on home computer")
+    override = os.environ.get("LOCAL_QWEN_REPO_FALLBACK", "").strip()
+    if override:
+        return Path(override).expanduser()
+    windows_default = Path(r"C:\Users\AzdahaI9\Documents\Local Qwen 3.635Ba3B on home computer")
+    if windows_default.exists():
+        return windows_default
+    return detect_control_center_repo_root()
+
+
+def detect_control_center_repo_root() -> Path:
+    return Path(__file__).resolve().parents[3]

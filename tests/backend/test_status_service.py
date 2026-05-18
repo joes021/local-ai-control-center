@@ -27,6 +27,8 @@ class StatusServiceTests(unittest.TestCase):
         self.assertIn("hostPlatform", payload)
         self.assertIn("hostPlatformLabel", payload)
         self.assertIn("hostShellLabel", payload)
+        self.assertIn("hostArchitecture", payload)
+        self.assertIn("hostArchitectureLabel", payload)
         self.assertIn("localUrl", payload)
         self.assertIn("tailscaleUrl", payload)
         self.assertIn("runtimeStatus", payload)

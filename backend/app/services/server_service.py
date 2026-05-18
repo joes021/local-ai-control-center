@@ -96,14 +96,45 @@ def open_server_web(*, local_qwen_home: Path | None = None) -> dict[str, object]
     url = f"http://127.0.0.1:{port}/"
 
     if get_target_platform() != "windows":
+        opener = _detect_linux_url_opener()
+        if not opener:
+            return {
+                "status": "error",
+                "action": "open-server-web",
+                "summary": "Nije pronadjen Linux URL opener (xdg-open / gio / sensible-browser).",
+                "details": {
+                    "returncode": 1,
+                    "stdout": "",
+                    "stderr": "Nije pronadjen Linux URL opener (xdg-open / gio / sensible-browser).",
+                    "url": url,
+                },
+            }
+        completed = subprocess.run(
+            [*opener, url],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        status = "ok" if completed.returncode == 0 else "error"
+        summary = (
+            f"Otvoren llama.cpp web: {url}"
+            if completed.returncode == 0
+            else (
+                completed.stderr.strip()
+                or completed.stdout.strip()
+                or "Otvaranje llama.cpp web-a nije uspelo."
+            )
+        )
         return {
-            "status": "unsupported",
+            "status": status,
             "action": "open-server-web",
-            "summary": "Linux web launcher jos nije izdvojen kao poseban stabilan tok.",
+            "summary": summary,
             "details": {
-                "returncode": 1,
-                "stdout": "",
-                "stderr": "Linux web launcher jos nije izdvojen kao poseban stabilan tok.",
+                "returncode": completed.returncode,
+                "stdout": completed.stdout.strip(),
+                "stderr": completed.stderr.strip(),
                 "url": url,
             },
         }
@@ -144,6 +175,24 @@ def open_server_web(*, local_qwen_home: Path | None = None) -> dict[str, object]
             "url": url,
         },
     }
+
+
+def _detect_linux_url_opener() -> list[str]:
+    for candidate in (["xdg-open"], ["gio", "open"], ["sensible-browser"]):
+        try:
+            completed = subprocess.run(
+                [candidate[0], "--help"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+        except OSError:
+            continue
+        if completed.returncode in {0, 1}:
+            return candidate
+    return []
 
 
 def detect_server_pid(port: int) -> int | None:

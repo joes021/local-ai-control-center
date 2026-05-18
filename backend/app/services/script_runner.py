@@ -4,16 +4,14 @@ import os
 import subprocess
 from pathlib import Path
 
-from backend.app.services.local_qwen_paths import detect_local_qwen_home
+from backend.app.services.local_qwen_paths import detect_control_center_repo_root, detect_local_qwen_home
 from backend.app.services.platform_config import get_target_platform
 
 
 def get_linux_launcher_dir() -> Path:
     local_home = detect_local_qwen_home()
     installed = local_home / "launchers"
-    fallback = Path(
-        r"C:\Users\AzdahaI9\Documents\Local Qwen 3.635Ba3B on home computer\launcher\linux"
-    )
+    fallback = detect_control_center_repo_root() / "launchers" / "linux"
     if installed.is_dir():
         return installed
     return fallback
@@ -22,9 +20,7 @@ def get_linux_launcher_dir() -> Path:
 def get_windows_launcher_dir() -> Path:
     local_home = detect_local_qwen_home()
     installed = local_home / "launchers"
-    fallback = Path(
-        r"C:\Users\AzdahaI9\Documents\Local Qwen 3.635Ba3B on home computer\launcher\windows"
-    )
+    fallback = detect_control_center_repo_root() / "launchers" / "windows"
     if installed.is_dir():
         return installed
     return fallback
@@ -34,18 +30,14 @@ def resolve_linux_launcher_path(script_name: str) -> Path:
     installed = detect_local_qwen_home() / "launchers" / script_name
     if installed.is_file():
         return installed
-    return Path(
-        r"C:\Users\AzdahaI9\Documents\Local Qwen 3.635Ba3B on home computer\launcher\linux"
-    ) / script_name
+    return detect_control_center_repo_root() / "launchers" / "linux" / script_name
 
 
 def resolve_windows_launcher_path(script_name: str) -> Path:
     installed = detect_local_qwen_home() / "launchers" / script_name
     if installed.is_file():
         return installed
-    return Path(
-        r"C:\Users\AzdahaI9\Documents\Local Qwen 3.635Ba3B on home computer\launcher\windows"
-    ) / script_name
+    return detect_control_center_repo_root() / "launchers" / "windows" / script_name
 
 
 def run_linux_launcher(
