@@ -1,3 +1,9 @@
+v2.24.7
+- Browser tabela sada popunjava GGUF velicine preko Hugging Face `tree` API-ja kada osnovni model API ne vrati `siblings.size`, pa velicine vise ne ostaju `Unknown`.
+- Browser redovi sada cuvaju pravi `repoId`, pa `Download` iz same tabele i detail panela koristi validan katalog zapis umesto praznog repo identifikatora.
+- Direktni link `Open model page` ostaje dostupan iz same Browser tabele.
+- Linux `OpenCode` otvaranje iz LAICC ostaje kroz terminal launcher, a ARM Browser fixevi su objedinjeni u isti patch release.
+
 v2.24.6
 - Browser refresh vise ne rusi ekran kada se klikne `Refresh from internet`; refresh payload se sada prikazuje kroz bezbedan rezultat umesto kroz pogresan ActionResult shape.
 - Browser tabela sada dobija stvarne velicine (`sizeBytes` / `sizeLabel`) iz source kataloga, pa GGUF fajlovi vise ne zavrsavaju kao `Unknown` kada API vrati poznatu velicinu.

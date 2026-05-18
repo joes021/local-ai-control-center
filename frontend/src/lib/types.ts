@@ -214,6 +214,7 @@ export type BrowserCatalogItem = {
   model: string;
   family: string;
   source: BrowserCatalogSource | string;
+  repoId?: string;
   quantization: string;
   sizeLabel: string;
   sizeBytes: number | null;

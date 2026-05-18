@@ -86,6 +86,7 @@ def _fetch_hf_models(query: dict[str, str], *, source: str) -> SourceFetchResult
         siblings = repo.get("siblings") or []
         if not repo_id or not isinstance(siblings, list):
             continue
+        sibling_sizes = _read_repo_file_sizes(repo_id)
         gguf_files = [
             sibling for sibling in siblings
             if isinstance(sibling, dict) and str(sibling.get("rfilename", "") or "").lower().endswith(".gguf")
@@ -97,12 +98,15 @@ def _fetch_hf_models(query: dict[str, str], *, source: str) -> SourceFetchResult
             gguf_files = gguf_files[:16]
         for sibling in gguf_files:
             filename = str(sibling.get("rfilename", "") or "")
+            size_bytes = sibling.get("size")
+            if size_bytes in (None, ""):
+                size_bytes = sibling_sizes.get(filename)
             models.append(
                 _normalize_model_entry(
                     source=source,
                     repo_id=repo_id,
                     repo=repo,
-                    sibling=sibling,
+                    sibling={**sibling, "size": size_bytes},
                     filename=filename,
                 )
             )
@@ -161,6 +165,27 @@ def _read_json(url: str) -> object:
     request = urllib_request.Request(url, headers={"User-Agent": "LocalAIControlCenter/2"})
     with urllib_request.urlopen(request, timeout=20) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _read_repo_file_sizes(repo_id: str) -> dict[str, int]:
+    url = f"{HF_API}/{urllib_parse.quote(repo_id, safe='')}/tree/main?recursive=1"
+    try:
+        payload = _read_json(url)
+    except Exception:  # noqa: BLE001
+        return {}
+
+    if not isinstance(payload, list):
+        return {}
+
+    file_sizes: dict[str, int] = {}
+    for entry in payload:
+        if not isinstance(entry, dict):
+            continue
+        path = str(entry.get("path", "") or "")
+        size = _to_int(entry.get("size"))
+        if path and size is not None:
+            file_sizes[path] = size
+    return file_sizes
 
 
 def _extract_quantization(filename: str) -> str:

@@ -159,6 +159,7 @@ class UiSourceSmokeTests(unittest.TestCase):
         self.assertIn("Open model page", content)
         self.assertIn("<a", content)
         self.assertIn("sourceUrl", content)
+        self.assertIn("record.repoId", content)
         self.assertNotIn("<aside className=\"browser-detail-panel\">", content)
 
     def test_compatibility_modal_contains_live_calculator_actions(self):

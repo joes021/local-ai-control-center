@@ -190,7 +190,7 @@ function buildItem(record: Record<string, unknown>): BrowserCatalogItem {
   const mtpStatus = normalizeMtpStatus(record.mtpStatus || record.mtp || record.mtp_state);
   const fit = asRecord(record.fit);
   const fitStatus = normalizeFitStatus(record.fitStatus || fit.status || record.compatibility);
-  const repo = readString(record.repo || record.repository || record.slug);
+  const repo = readString(record.repo || record.repoId || record.repository || record.slug);
   const filename = readString(record.filename || record.fileName || record.ggufFilename);
   const id =
     readString(record.id) ||
@@ -201,6 +201,7 @@ function buildItem(record: Record<string, unknown>): BrowserCatalogItem {
     model,
     family,
     source,
+    repoId: repo,
     quantization,
     sizeLabel,
     sizeBytes,
