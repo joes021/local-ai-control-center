@@ -1,3 +1,7 @@
+v2.24.8
+- Linux installer sada prihvata vec aktivan/lokalno prisutan model kao validan bootstrap kandidat, pa reinstall na masini koja vec ima zdrav model vise ne pada na `bootstrap-not-ready`.
+- `download-failed` sada cuva stvaran razlog iz bootstrap download koraka, pa installer report vise nije slep ako preporuceni model ne uspe da se preuzme.
+
 v2.24.7
 - Browser tabela sada popunjava GGUF velicine preko Hugging Face `tree` API-ja kada osnovni model API ne vrati `siblings.size`, pa velicine vise ne ostaju `Unknown`.
 - Browser redovi sada cuvaju pravi `repoId`, pa `Download` iz same tabele i detail panela koristi validan katalog zapis umesto praznog repo identifikatora.

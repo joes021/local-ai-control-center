@@ -329,18 +329,27 @@ build_model_bootstrap_state() {
   local selected_model_path=""
   local selected_model_downloaded="false"
   local bootstrap_ready="false"
+  local installed_model_exists="false"
 
   if [ -n "$selected_model_file" ]; then
     selected_model_path="$WORKSPACE_ROOT/models/$selected_model_file"
   fi
+  if [ -n "$installed_model_file" ] && [ -f "$installed_model_file" ]; then
+    installed_model_exists="true"
+  fi
   if [ -n "$selected_model_path" ] && [ -f "$selected_model_path" ]; then
     selected_model_downloaded="true"
-  elif [ -n "$installed_model_file" ] && [ -n "$selected_model_file" ] && [ "$(basename "$installed_model_file")" = "$selected_model_file" ]; then
+  elif [ "$installed_model_exists" = "true" ]; then
     selected_model_downloaded="true"
+    if [ -z "$selected_model_path" ] || [ ! -f "$selected_model_path" ]; then
+      selected_model_path="$installed_model_file"
+    fi
   fi
 
   if [ -z "$bootstrap_status" ]; then
-    if [ -z "$selected_model_id" ] || [ -z "$selected_model_file" ]; then
+    if [ "$installed_model_exists" = "true" ]; then
+      bootstrap_status="ready-existing-model"
+    elif [ -z "$selected_model_id" ] || [ -z "$selected_model_file" ]; then
       bootstrap_status="selection-missing"
     elif [ "$selected_model_downloaded" = "true" ]; then
       bootstrap_status="ready"
@@ -349,12 +358,13 @@ build_model_bootstrap_state() {
     fi
   fi
 
-  if [ "$selected_model_downloaded" = "true" ] && [ -n "$selected_model_id" ] && [ -n "$selected_model_file" ]; then
+  if [ "$selected_model_downloaded" = "true" ] && { [ -n "$selected_model_id" ] || [ "$installed_model_exists" = "true" ]; }; then
     bootstrap_ready="true"
   fi
 
   if [ -z "$bootstrap_message" ]; then
     case "$bootstrap_status" in
+      ready-existing-model) bootstrap_message="Installer je prepoznao vec aktivan lokalni model i koristi ga za readiness tok." ;;
       selection-missing) bootstrap_message="Installer nema kompletan selected model selection za model bootstrap fazu." ;;
       ready) bootstrap_message="Selected model je spreman za model bootstrap fazu." ;;
       downloaded) bootstrap_message="Selected model je uspesno preuzet kroz model bootstrap fazu." ;;
@@ -407,12 +417,49 @@ PY
     return 0
   fi
 
-  if download_selected_model_direct "$selected_model_id" "$selected_model_file" >/dev/null 2>&1; then
+  local download_output=""
+  if download_output="$(download_selected_model_direct "$selected_model_id" "$selected_model_file" 2>&1)"; then
     build_model_bootstrap_state "$selected_model_id" "$selected_model_file" "$WORKSPACE_ROOT/models/$selected_model_file" "downloaded"
     return 0
   fi
 
-  build_model_bootstrap_state "$selected_model_id" "$selected_model_file" "$installed_model_file" "download-failed"
+  build_model_bootstrap_state "$selected_model_id" "$selected_model_file" "$installed_model_file" "download-failed" "$download_output"
+}
+
+detect_existing_model_file() {
+  python3 - <<'PY' "$INSTALL_STATE_PATH" "$WORKSPACE_ROOT/models"
+import json
+import sys
+from pathlib import Path
+
+install_state_path = Path(sys.argv[1])
+models_dir = Path(sys.argv[2])
+
+def load_json(path: Path) -> dict:
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+state = load_json(install_state_path)
+model_file = str(state.get("modelFile", "") or "").strip()
+if model_file:
+    candidate = Path(model_file)
+    if candidate.is_file():
+        print(str(candidate))
+        raise SystemExit(0)
+    candidate = models_dir / candidate.name
+    if candidate.is_file():
+        print(str(candidate))
+        raise SystemExit(0)
+
+if models_dir.is_dir():
+    ggufs = sorted((path for path in models_dir.glob("*.gguf") if path.is_file()), key=lambda p: p.stat().st_size, reverse=True)
+    if ggufs:
+        print(str(ggufs[0]))
+PY
 }
 
 run_first_run_probe() {
@@ -728,20 +775,7 @@ HEALTHY_RUNTIME_PORT="$(detect_healthy_runtime_port || true)"
 WRAPPER_PATH="$(write_launcher_wrapper)"
 write_desktop_entry "$WRAPPER_PATH"
 STARTED_CONTROL_CENTER_URL=""
-MODEL_FILE_BEFORE_BOOTSTRAP=""
-if [ -f "$INSTALL_STATE_PATH" ]; then
-  MODEL_FILE_BEFORE_BOOTSTRAP="$(python3 - <<'PY' "$INSTALL_STATE_PATH"
-import json, sys
-from pathlib import Path
-path = Path(sys.argv[1])
-try:
-    data = json.loads(path.read_text(encoding="utf-8"))
-except Exception:
-    data = {}
-print(data.get("modelFile", ""))
-PY
-)"
-fi
+MODEL_FILE_BEFORE_BOOTSTRAP="$(detect_existing_model_file || true)"
 MODEL_BOOTSTRAP_JSON="$(run_model_bootstrap "$SELECTED_MODEL_ID" "$SELECTED_MODEL_FILE" "$MODEL_FILE_BEFORE_BOOTSTRAP")"
 MODEL_BOOTSTRAP_STATUS="$(python3 - <<'PY' "$MODEL_BOOTSTRAP_JSON"
 import json, sys
