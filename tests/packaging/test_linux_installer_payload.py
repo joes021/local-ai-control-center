@@ -28,6 +28,9 @@ class LinuxInstallerPayloadTests(unittest.TestCase):
         self.assertNotIn("Preuzmi preporuceni model odmah?", content)
         self.assertNotIn("bootstrap handoff", content.lower())
         self.assertNotIn("bootstrap/download", content.lower())
+        self.assertIn('bash "$RUNNER_SCRIPT"', content)
+        self.assertIn('Pokretanje instalacije', content)
+        self.assertIn('bez dodatnog tekstualnog wizarda', content)
 
     def test_linux_tui_installer_mentions_guided_model_selection(self):
         content = (ROOT / "install" / "linux" / "installer-tui.sh").read_text(encoding="utf-8")
@@ -67,6 +70,10 @@ class LinuxInstallerPayloadTests(unittest.TestCase):
         self.assertIn('find "$APP_ROOT/launchers" "$APP_ROOT/install" "$BIN_DIR" -type f -name "*.sh" -exec chmod +x {} +', content)
         self.assertIn('if [ -x "$target/build/bin/llama-server" ]; then', content)
         self.assertIn('if [ "$SKIP_LLAMA_SETUP" = "1" ]; then', content)
+        self.assertIn("command -v node", content)
+        self.assertIn("command -v npm", content)
+        self.assertIn('packages=("git" "curl" "python3" "python3-venv" "python3-pip" "cmake" "ninja-build" "build-essential" "pkg-config")', content)
+        self.assertNotIn("sudo apt-get install -y git curl python3 python3-venv python3-pip nodejs npm cmake ninja-build build-essential pkg-config", content)
 
     def test_linux_launcher_uses_local_qwen_home_state(self):
         content = (ROOT / "launchers" / "linux" / "start-control-center-next.sh").read_text(encoding="utf-8")

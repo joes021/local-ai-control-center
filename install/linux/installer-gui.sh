@@ -263,4 +263,8 @@ if launch_script_in_terminal "$RUNNER_SCRIPT"; then
   exit 0
 fi
 
-exec bash "$TUI_SCRIPT"
+zenity --info \
+  --title="Pokretanje instalacije" \
+  --text="Sistemski terminal nije pronadjen. Instalacija se nastavlja u ovom terminalu bez dodatnog tekstualnog wizarda." || true
+
+exec bash "$RUNNER_SCRIPT"

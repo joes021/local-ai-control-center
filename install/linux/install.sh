@@ -93,8 +93,22 @@ ensure_packages() {
     return
   fi
   if command -v apt-get >/dev/null 2>&1; then
+    local packages=("git" "curl" "python3" "python3-venv" "python3-pip" "cmake" "ninja-build" "build-essential" "pkg-config")
+
+    if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+      packages+=("nodejs")
+    fi
+
     sudo apt-get update
-    sudo apt-get install -y git curl python3 python3-venv python3-pip nodejs npm cmake ninja-build build-essential pkg-config
+    sudo apt-get install -y "${packages[@]}"
+
+    if ! command -v npm >/dev/null 2>&1; then
+      if dpkg -s nodejs >/dev/null 2>&1 && dpkg-query -W -f='${Version}' nodejs 2>/dev/null | grep -qi 'nodesource'; then
+        echo "nodejs je prisutan preko NodeSource paketa, ali npm i dalje nije dostupan u PATH-u." >&2
+      else
+        sudo apt-get install -y npm
+      fi
+    fi
   fi
 }
 

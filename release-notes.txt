@@ -62,3 +62,7 @@ v2.24.0
 - Model bootstrap je podignut na success gate: instalacija sada proverava da li je selected model stvarno prisutan i obara Finish ako bootstrap/download nije spreman.
 - Dodat je first-run probe sa promptom `Reply with exactly OK and nothing else.` i Finish sada zavisi i od stvarnog odgovora modela, ne samo od health porta.
 - Repair tok sada vraca human-readable rezultat i siguran sledeci korak za netehnicke korisnike.
+v2.24.4
+- GitHub README, download links i getting-started dokumentacija sada vise ne ostaju zalepljeni na starom `v2.24.2` releasu.
+- Linux GUI installer vise ne pada u drugi tekstualni wizard kada nema podrzan sistemski terminal, nego nastavlja isti install tok bez duplog izbora.
+- Linux dependency korak sada pametnije proverava postojeci `node` i `npm` umesto da na NodeSource sistemima slepo pokusava konfliktni `apt install nodejs npm`.
