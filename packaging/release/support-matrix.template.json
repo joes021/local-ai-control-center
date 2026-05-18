@@ -15,6 +15,6 @@
     "controlCenter": "required",
     "llamaCpp": "required",
     "openCode": "required",
-    "turboQuant": "optional-or-unsupported"
+    "turboQuant": "unsupported"
   }
 }

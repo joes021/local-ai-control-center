@@ -55,7 +55,136 @@ Source: "{#SourceRoot}\release-notes.txt"; DestDir: "{app}"; Flags: ignoreversio
 Source: "{#SupportRoot}\config\profiles\*"; DestDir: "{app}\config\profiles"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SupportRoot}\scripts\*"; DestDir: "{app}\scripts"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc"
 Source: "{#SupportRoot}\assets\icons\*"; DestDir: "{app}\assets\icons"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{app}\install\windows\setup-bootstrap.cmd"; DestDir: "{app}"; Flags: external skipifsourcedoesntexist
 
-[Run]
-Filename: "{app}\setup-bootstrap.cmd"; Description: "Run Local AI Control Center bootstrap"; Flags: postinstall skipifsilent runascurrentuser
+[Code]
+var
+  EditionPage: TInputOptionWizardPage;
+  AccessModePage: TInputOptionWizardPage;
+  RuntimePage: TInputOptionWizardPage;
+  SummaryPage: TOutputMsgMemoWizardPage;
+  InstallRunExitCode: Integer;
+  InstallRunStarted: Boolean;
+
+function GetSelectedEdition(): string;
+begin
+  if EditionPage.Values[0] then
+    Result := 'Unified'
+  else
+    Result := 'Classic';
+end;
+
+function GetSelectedAccessMode(): string;
+begin
+  if AccessModePage.Values[0] then
+    Result := 'local-only'
+  else
+    Result := 'tailscale';
+end;
+
+function GetInstallScriptParameters(): string;
+var
+  turboSwitch: string;
+  opencodeSwitch: string;
+begin
+  turboSwitch := '';
+  opencodeSwitch := '';
+  if not RuntimePage.Values[1] then
+    turboSwitch := ' -SkipTurboQuant';
+  if not RuntimePage.Values[0] then
+    opencodeSwitch := ' -SkipOpenCodeInstall';
+
+  Result :=
+    '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\install\windows\install.ps1') + '"' +
+    ' -InstallRoot "' + ExpandConstant('{userprofile}\LocalQwenHome') + '"' +
+    ' -Edition "' + GetSelectedEdition() + '"' +
+    ' -AccessMode "' + GetSelectedAccessMode() + '"' +
+    ' -Profile "balanced"' +
+    opencodeSwitch + turboSwitch;
+end;
+
+procedure InitializeWizard();
+begin
+  InstallRunExitCode := 0;
+  InstallRunStarted := False;
+
+  EditionPage := CreateInputOptionPage(
+    wpWelcome,
+    'Choose installer edition',
+    'Classic or Unified',
+    'Unified installs the full local runtime plus the Control Center Next shell. Classic keeps only the legacy shell.',
+    True,
+    False
+  );
+  EditionPage.Add('Unified - full stack + Control Center Next');
+  EditionPage.Add('Classic - legacy shell only');
+  EditionPage.Values[0] := True;
+
+  AccessModePage := CreateInputOptionPage(
+    EditionPage.ID,
+    'Access mode',
+    'Choose how the installer should expose the control center',
+    'Access mode changes how the service binds after setup. local-only is safest. tailscale exposes the UI through your tailscale network.',
+    True,
+    False
+  );
+  AccessModePage.Add('local-only');
+  AccessModePage.Add('tailscale');
+  AccessModePage.Values[0] := True;
+
+  RuntimePage := CreateInputOptionPage(
+    AccessModePage.ID,
+    'Runtime components',
+    'Choose optional components',
+    'OpenCode and TurboQuant can be installed together with llama.cpp. OpenCode is recommended. TurboQuant needs CUDA-compatible build tools.',
+    False,
+    False
+  );
+  RuntimePage.Add('Install OpenCode');
+  RuntimePage.Add('Install TurboQuant');
+  RuntimePage.Values[0] := True;
+  RuntimePage.Values[1] := True;
+
+  SummaryPage := CreateOutputMsgMemoPage(
+    wpInstalling,
+    'Installer summary',
+    'Review the Windows setup result',
+    'Read the installer output before pressing Finish.',
+    ''
+  );
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+  Executed: Boolean;
+  SummaryText: string;
+begin
+  if CurStep = ssPostInstall then begin
+    InstallRunStarted := True;
+    SummaryText :=
+      'Edition: ' + GetSelectedEdition() + #13#10 +
+      'Access mode: ' + GetSelectedAccessMode() + #13#10 +
+      'OpenCode: ' + IntToStr(Integer(RuntimePage.Values[0])) + #13#10 +
+      'TurboQuant: ' + IntToStr(Integer(RuntimePage.Values[1]));
+
+    Executed := Exec(
+      ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      GetInstallScriptParameters(),
+      ExpandConstant('{app}'),
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode
+    );
+    if Executed then
+      InstallRunExitCode := ResultCode
+    else
+      InstallRunExitCode := -1;
+
+    if InstallRunExitCode = 0 then
+      SummaryText := SummaryText + #13#10 + #13#10 + 'Setup finished successfully.'
+    else
+      SummaryText := SummaryText + #13#10 + #13#10 + 'Setup finished with exit code ' + IntToStr(InstallRunExitCode) + '.';
+
+    SummaryPage.RichEditViewer.Text := SummaryText;
+  end;
+end;

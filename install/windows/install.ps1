@@ -1,5 +1,11 @@
 param(
     [string]$InstallRoot = "$env:USERPROFILE\LocalQwenHome",
+    [ValidateSet("Classic", "Unified")]
+    [string]$Edition = "Unified",
+    [ValidateSet("local-only", "tailscale")]
+    [string]$AccessMode = "local-only",
+    [ValidateSet("balanced", "speed", "video")]
+    [string]$Profile = "balanced",
     [switch]$SkipDependencies,
     [switch]$SkipOpenCodeInstall,
     [switch]$SkipLlamaSetup,
@@ -9,6 +15,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Unified installer overlay for legacy Local Qwen 3.635Ba3B on home computer.
+# This script keeps legacy runtime expectations and deploys control-center-next as the Next shell.
 $payloadRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $workspaceRoot = $InstallRoot
 $appRoot = Join-Path $workspaceRoot "control-center-next"
@@ -108,7 +116,16 @@ function Ensure-LlamaCpp {
     if (-not (Test-Path $target)) {
         git clone https://github.com/ggml-org/llama.cpp.git $target
     }
-    return [bool](Test-Path $target)
+    $llamaExe = Join-Path $target "build\bin\llama-server.exe"
+    if (-not (Test-Path $llamaExe) -and (Get-Command cmake -ErrorAction SilentlyContinue)) {
+        $cudaFlag = if (Get-Command nvcc -ErrorAction SilentlyContinue) { "ON" } else { "OFF" }
+        $generator = if (Get-Command ninja -ErrorAction SilentlyContinue) { "Ninja" } else { "Visual Studio 17 2022" }
+        & cmake -G $generator -S $target -B (Join-Path $target "build") "-DGGML_CUDA=$cudaFlag" | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            & cmake --build (Join-Path $target "build") --config Release -j | Out-Null
+        }
+    }
+    return [bool](Test-Path $llamaExe)
 }
 
 function Ensure-TurboQuant {
@@ -116,7 +133,18 @@ function Ensure-TurboQuant {
         return @{ status = "skipped"; path = "" }
     }
     $target = Join-Path $appsDir "llama.cpp-turboquant"
-    if (Test-Path $target) {
+    if (-not (Test-Path $target)) {
+        git clone https://github.com/TheTom/llama-cpp-turboquant.git $target | Out-Null
+    }
+    $turboExe = Join-Path $target "build-cuda\bin\llama-server.exe"
+    if (-not (Test-Path $turboExe) -and (Get-Command cmake -ErrorAction SilentlyContinue) -and (Get-Command nvcc -ErrorAction SilentlyContinue)) {
+        $generator = if (Get-Command ninja -ErrorAction SilentlyContinue) { "Ninja" } else { "Visual Studio 17 2022" }
+        & cmake -G $generator -S $target -B (Join-Path $target "build-cuda") -DGGML_CUDA=ON | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            & cmake --build (Join-Path $target "build-cuda") --config Release -j | Out-Null
+        }
+    }
+    if (Test-Path $turboExe) {
         return @{ status = "present"; path = $target }
     }
     return @{ status = "not-installed"; path = "" }
@@ -187,6 +215,7 @@ if ($opencodeReady -and (Get-Command opencode -ErrorAction SilentlyContinue)) {
 
 $llamaPath = Join-Path $appsDir "llama.cpp\build\bin\llama-server.exe"
 $installState = [ordered]@{
+    edition = $Edition
     profile = "balanced"
     modelId = if ($SkipModelDownload) { "none" } else { "installer-default" }
     modelFile = ""
@@ -197,13 +226,14 @@ $installState = [ordered]@{
 Write-JsonFile -Path $installStatePath -Payload $installState
 
 $settingsPayload = [ordered]@{
-    profile = "balanced"
+    edition = $Edition
+    profile = $Profile
     context = 262144
     outputTokens = 8192
-    accessMode = "local-only"
+    accessMode = $AccessMode
 }
 Write-JsonFile -Path $settingsPath -Payload $settingsPayload
-Write-JsonFile -Path $runtimeConfigPath -Payload @{ accessMode = "local-only" }
+Write-JsonFile -Path $runtimeConfigPath -Payload @{ accessMode = $AccessMode }
 
 $components = [ordered]@{
     controlCenter = @{ ok = (Test-Path (Join-Path $appRoot "frontend\dist\index.html")); path = $appRoot }
@@ -214,6 +244,7 @@ $components = [ordered]@{
 Write-JsonFile -Path $installReportPath -Payload @{
     installRoot = $workspaceRoot
     appRoot = $appRoot
+    edition = $Edition
     launchWrapper = $launchWrapper
     localUrl = "http://127.0.0.1:3210"
     components = $components
@@ -225,10 +256,12 @@ if (-not $components.llamaCppRuntime.ok) { $failedCore += "llama.cpp" }
 if (-not $components.openCode.ok) { $failedCore += "OpenCode" }
 
 Write-Host "Install report:" -ForegroundColor Cyan
+Write-Host "Edition: $Edition"
 Write-Host "Control Center: $($components.controlCenter.ok)"
 Write-Host "llama.cpp: $($components.llamaCppRuntime.ok)"
 Write-Host "OpenCode: $($components.openCode.ok)"
 Write-Host "TurboQuant: $($components.turboQuantRuntime.status)"
+Write-Host "Access mode: $AccessMode"
 Write-Host "Install root: $workspaceRoot"
 Write-Host "Launcher: $launchWrapper"
 

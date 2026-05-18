@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Unified installer overlay for legacy Local Qwen 3.635Ba3B on home computer core.
+# The installer keeps the local-qwen legacy runtime assumptions while deploying control-center-next.
 INSTALL_ROOT="${INSTALL_ROOT:-$HOME/local-qwen-home}"
+INSTALL_VARIANT="${INSTALL_VARIANT:-unified}"
+ACCESS_MODE="${ACCESS_MODE:-local-only}"
+PROFILE="${PROFILE:-balanced}"
 SKIP_DEPENDENCIES="${SKIP_DEPENDENCIES:-0}"
-SKIP_OPENCODE_INSTALL="${SKIP_OPENCODE_INSTALL:-0}"
+INSTALL_OPENCODE="${INSTALL_OPENCODE:-1}"
 SKIP_LLAMA_SETUP="${SKIP_LLAMA_SETUP:-0}"
-SKIP_TURBOQUANT="${SKIP_TURBOQUANT:-0}"
+INSTALL_TURBOQUANT="${INSTALL_TURBOQUANT:-1}"
 SKIP_MODEL_DOWNLOAD="${SKIP_MODEL_DOWNLOAD:-1}"
 
 PAYLOAD_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -21,6 +26,13 @@ SETTINGS_PATH="$STATE_DIR/settings.json"
 RUNTIME_CONFIG_PATH="$STATE_DIR/runtime-config.json"
 TARGET_ARCH="$(cat "$PAYLOAD_ROOT/.target-architecture" 2>/dev/null || echo "unknown")"
 HOST_ARCH="$(uname -m)"
+
+if [ "$TARGET_ARCH" = "aarch64" ]; then
+  TARGET_ARCH="arm64"
+fi
+if [ "$HOST_ARCH" = "aarch64" ]; then
+  HOST_ARCH="arm64"
+fi
 
 ensure_dir() {
   mkdir -p "$1"
@@ -57,12 +69,12 @@ ensure_packages() {
   fi
   if command -v apt-get >/dev/null 2>&1; then
     sudo apt-get update
-    sudo apt-get install -y git curl python3 python3-venv python3-pip nodejs npm
+    sudo apt-get install -y git curl python3 python3-venv python3-pip nodejs npm cmake ninja-build build-essential pkg-config
   fi
 }
 
 ensure_opencode() {
-  if [ "$SKIP_OPENCODE_INSTALL" = "1" ]; then
+  if [ "$INSTALL_OPENCODE" != "1" ]; then
     return 1
   fi
   if command -v opencode >/dev/null 2>&1; then
@@ -83,11 +95,23 @@ ensure_llama() {
   if [ ! -d "$target" ]; then
     git clone https://github.com/ggml-org/llama.cpp.git "$target" >/dev/null 2>&1 || return 1
   fi
-  [ -d "$target" ]
+  if [ ! -x "$target/build/bin/llama-server" ] && command -v cmake >/dev/null 2>&1; then
+    local generator="Unix Makefiles"
+    if command -v ninja >/dev/null 2>&1; then
+      generator="Ninja"
+    fi
+    local cuda_flag="OFF"
+    if command -v nvcc >/dev/null 2>&1; then
+      cuda_flag="ON"
+    fi
+    cmake -G "$generator" -S "$target" -B "$target/build" "-DGGML_CUDA=$cuda_flag" >/dev/null 2>&1 || return 1
+    cmake --build "$target/build" -j >/dev/null 2>&1 || return 1
+  fi
+  [ -x "$target/build/bin/llama-server" ]
 }
 
 ensure_turboquant() {
-  if [ "$SKIP_TURBOQUANT" = "1" ]; then
+  if [ "$INSTALL_TURBOQUANT" != "1" ]; then
     printf 'skipped'
     return 0
   fi
@@ -95,7 +119,22 @@ ensure_turboquant() {
     printf 'unsupported'
     return 0
   fi
-  if [ -d "$APPS_DIR/llama.cpp-turboquant" ]; then
+  local target="$APPS_DIR/llama.cpp-turboquant"
+  if [ ! -d "$target" ]; then
+    git clone https://github.com/TheTom/llama-cpp-turboquant.git "$target" >/dev/null 2>&1 || {
+      printf 'not-installed'
+      return 0
+    }
+  fi
+  if command -v cmake >/dev/null 2>&1 && command -v nvcc >/dev/null 2>&1; then
+    local generator="Unix Makefiles"
+    if command -v ninja >/dev/null 2>&1; then
+      generator="Ninja"
+    fi
+    cmake -G "$generator" -S "$target" -B "$target/build-cuda" -DGGML_CUDA=ON >/dev/null 2>&1 || true
+    cmake --build "$target/build-cuda" -j >/dev/null 2>&1 || true
+  fi
+  if [ -x "$target/build-cuda/bin/llama-server" ] || [ -x "$target/build-cuda/llama-server" ]; then
     printf 'present'
     return 0
   fi
@@ -168,6 +207,7 @@ write_desktop_entry "$WRAPPER_PATH"
 
 cat > "$INSTALL_STATE_PATH" <<EOF
 {
+  "edition": "$INSTALL_VARIANT",
   "profile": "balanced",
   "modelId": "${SKIP_MODEL_DOWNLOAD:+none}",
   "modelFile": "",
@@ -179,16 +219,17 @@ EOF
 
 cat > "$SETTINGS_PATH" <<EOF
 {
-  "profile": "balanced",
+  "edition": "$INSTALL_VARIANT",
+  "profile": "$PROFILE",
   "context": 262144,
   "outputTokens": 8192,
-  "accessMode": "local-only"
+  "accessMode": "$ACCESS_MODE"
 }
 EOF
 
 cat > "$RUNTIME_CONFIG_PATH" <<EOF
 {
-  "accessMode": "local-only"
+  "accessMode": "$ACCESS_MODE"
 }
 EOF
 
@@ -196,6 +237,7 @@ cat > "$INSTALL_REPORT_PATH" <<EOF
 {
   "installRoot": "$WORKSPACE_ROOT",
   "appRoot": "$APP_ROOT",
+  "edition": "$INSTALL_VARIANT",
   "launchWrapper": "$WRAPPER_PATH",
   "localUrl": "http://127.0.0.1:3210",
   "targetArchitecture": "$TARGET_ARCH",
@@ -210,10 +252,12 @@ cat > "$INSTALL_REPORT_PATH" <<EOF
 EOF
 
 echo "Install report:"
+echo "Edition: $INSTALL_VARIANT"
 echo "Control Center: OK"
 echo "llama.cpp: $LLAMA_OK"
 echo "OpenCode: $OPENCODE_OK"
 echo "TurboQuant: $TURBO_STATUS"
+echo "Access mode: $ACCESS_MODE"
 echo "Install root: $WORKSPACE_ROOT"
 echo "Launcher: $WRAPPER_PATH"
 

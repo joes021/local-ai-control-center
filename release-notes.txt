@@ -1,3 +1,9 @@
+v2.22.0
+- Added real wizard-style installer flow for Windows, Ubuntu x86_64, and Ubuntu arm64.
+- Installers now expose edition choice, access mode, and optional runtime component choices.
+- Ubuntu arm64 installer now blocks TurboQuant selection by design because that platform is treated as unsupported for TurboQuant.
+- Unified install flow now carries the legacy full-stack assumptions plus the Control Center Next overlay.
+
 v2.21.0
 - Added multi-platform hybrid installer packaging for Windows, Ubuntu x86_64, and Ubuntu arm64.
 - Installers now target real dependency/runtime readiness instead of only copying UI files.
