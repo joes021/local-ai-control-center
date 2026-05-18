@@ -31,6 +31,7 @@ class LinuxInstallerPayloadTests(unittest.TestCase):
         self.assertIn('bash "$RUNNER_SCRIPT"', content)
         self.assertIn('Pokretanje instalacije', content)
         self.assertIn('bez dodatnog tekstualnog wizarda', content)
+        self.assertIn('${HOME}/local-ai-control-center', content)
 
     def test_linux_tui_installer_mentions_guided_model_selection(self):
         content = (ROOT / "install" / "linux" / "installer-tui.sh").read_text(encoding="utf-8")
@@ -43,6 +44,7 @@ class LinuxInstallerPayloadTests(unittest.TestCase):
         self.assertIn("qwen3.6-35b-a3b-mtp-ud-q4-k-xl", content)
         self.assertNotIn("Download model now?", content)
         self.assertNotIn("bootstrap handoff", content.lower())
+        self.assertIn('$HOME/local-ai-control-center', content)
         self.assertNotIn("bootstrap/download", content.lower())
 
     def test_linux_installer_invokes_legacy_core_install_and_next_overlay(self):
@@ -74,6 +76,8 @@ class LinuxInstallerPayloadTests(unittest.TestCase):
         self.assertIn("command -v npm", content)
         self.assertIn('packages=("git" "curl" "python3" "python3-venv" "python3-pip" "cmake" "ninja-build" "build-essential" "pkg-config")', content)
         self.assertNotIn("sudo apt-get install -y git curl python3 python3-venv python3-pip nodejs npm cmake ninja-build build-essential pkg-config", content)
+        self.assertIn('INSTALL_ROOT="${INSTALL_ROOT:-$HOME/local-ai-control-center}"', content)
+        self.assertIn('MODEL_FILE_BEFORE_BOOTSTRAP="$(detect_existing_model_file "$SELECTED_MODEL_FILE" || true)"', content)
 
     def test_linux_launcher_uses_local_qwen_home_state(self):
         content = (ROOT / "launchers" / "linux" / "start-control-center-next.sh").read_text(encoding="utf-8")

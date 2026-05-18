@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Unified installer overlay for legacy Local Qwen 3.635Ba3B on home computer core.
 # The installer keeps the local-qwen legacy runtime assumptions while deploying control-center-next.
-INSTALL_ROOT="${INSTALL_ROOT:-$HOME/local-qwen-home}"
+INSTALL_ROOT="${INSTALL_ROOT:-$HOME/local-ai-control-center}"
 INSTALL_VARIANT="${INSTALL_VARIANT:-unified}"
 ACCESS_MODE="${ACCESS_MODE:-local-only}"
 PROFILE="${PROFILE:-balanced}"
@@ -330,16 +330,22 @@ build_model_bootstrap_state() {
   local selected_model_downloaded="false"
   local bootstrap_ready="false"
   local installed_model_exists="false"
+  local installed_model_name=""
+  local installed_matches_selected="false"
 
   if [ -n "$selected_model_file" ]; then
     selected_model_path="$WORKSPACE_ROOT/models/$selected_model_file"
   fi
   if [ -n "$installed_model_file" ] && [ -f "$installed_model_file" ]; then
     installed_model_exists="true"
+    installed_model_name="$(basename "$installed_model_file")"
+  fi
+  if [ -n "$selected_model_file" ] && [ -n "$installed_model_name" ] && [ "$installed_model_name" = "$selected_model_file" ]; then
+    installed_matches_selected="true"
   fi
   if [ -n "$selected_model_path" ] && [ -f "$selected_model_path" ]; then
     selected_model_downloaded="true"
-  elif [ "$installed_model_exists" = "true" ]; then
+  elif [ "$installed_model_exists" = "true" ] && { [ -z "$selected_model_file" ] || [ "$installed_matches_selected" = "true" ]; }; then
     selected_model_downloaded="true"
     if [ -z "$selected_model_path" ] || [ ! -f "$selected_model_path" ]; then
       selected_model_path="$installed_model_file"
@@ -347,7 +353,7 @@ build_model_bootstrap_state() {
   fi
 
   if [ -z "$bootstrap_status" ]; then
-    if [ "$installed_model_exists" = "true" ]; then
+    if [ "$installed_model_exists" = "true" ] && { [ -z "$selected_model_file" ] || [ "$installed_matches_selected" = "true" ]; }; then
       bootstrap_status="ready-existing-model"
     elif [ -z "$selected_model_id" ] || [ -z "$selected_model_file" ]; then
       bootstrap_status="selection-missing"
@@ -427,13 +433,15 @@ PY
 }
 
 detect_existing_model_file() {
-  python3 - <<'PY' "$INSTALL_STATE_PATH" "$WORKSPACE_ROOT/models"
+  local selected_model_file="${1:-}"
+  python3 - <<'PY' "$INSTALL_STATE_PATH" "$WORKSPACE_ROOT/models" "$selected_model_file"
 import json
 import sys
 from pathlib import Path
 
 install_state_path = Path(sys.argv[1])
 models_dir = Path(sys.argv[2])
+selected_model_file = str(sys.argv[3] or "").strip()
 
 def load_json(path: Path) -> dict:
     if not path.is_file():
@@ -455,10 +463,10 @@ if model_file:
         print(str(candidate))
         raise SystemExit(0)
 
-if models_dir.is_dir():
-    ggufs = sorted((path for path in models_dir.glob("*.gguf") if path.is_file()), key=lambda p: p.stat().st_size, reverse=True)
-    if ggufs:
-        print(str(ggufs[0]))
+if selected_model_file:
+    candidate = models_dir / selected_model_file
+    if candidate.is_file():
+        print(str(candidate))
 PY
 }
 
@@ -775,7 +783,7 @@ HEALTHY_RUNTIME_PORT="$(detect_healthy_runtime_port || true)"
 WRAPPER_PATH="$(write_launcher_wrapper)"
 write_desktop_entry "$WRAPPER_PATH"
 STARTED_CONTROL_CENTER_URL=""
-MODEL_FILE_BEFORE_BOOTSTRAP="$(detect_existing_model_file || true)"
+MODEL_FILE_BEFORE_BOOTSTRAP="$(detect_existing_model_file "$SELECTED_MODEL_FILE" || true)"
 MODEL_BOOTSTRAP_JSON="$(run_model_bootstrap "$SELECTED_MODEL_ID" "$SELECTED_MODEL_FILE" "$MODEL_FILE_BEFORE_BOOTSTRAP")"
 MODEL_BOOTSTRAP_STATUS="$(python3 - <<'PY' "$MODEL_BOOTSTRAP_JSON"
 import json, sys

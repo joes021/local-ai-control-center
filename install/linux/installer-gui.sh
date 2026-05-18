@@ -161,7 +161,7 @@ fi
 INSTALL_ROOT="$(zenity --entry \
   --title="Local AI Control Center Setup" \
   --text="Install root" \
-  --entry-text="${HOME}/local-qwen-home")"
+  --entry-text="${HOME}/local-ai-control-center")"
 
 if [ -z "${INSTALL_ROOT:-}" ]; then
   exit 1

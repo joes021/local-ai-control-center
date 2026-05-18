@@ -11,7 +11,13 @@ def detect_local_qwen_home() -> Path:
         return Path(override).expanduser()
     if get_target_platform() == "windows":
         return Path.home() / "LocalQwenHome"
-    return Path.home() / "local-qwen-home"
+    new_default = Path.home() / "local-ai-control-center"
+    legacy_default = Path.home() / "local-qwen-home"
+    if new_default.exists():
+        return new_default
+    if legacy_default.exists():
+        return legacy_default
+    return new_default
 
 
 def detect_local_qwen_repo_fallback() -> Path:

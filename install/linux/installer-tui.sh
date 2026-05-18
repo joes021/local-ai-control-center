@@ -156,7 +156,7 @@ if [ "$INSTALL_VARIANT" != "classic" ] && [ "$INSTALL_VARIANT" != "unified" ]; t
   exit 1
 fi
 
-INSTALL_ROOT="$(prompt_with_default 'Install root' "$HOME/local-qwen-home")"
+INSTALL_ROOT="$(prompt_with_default 'Install root' "$HOME/local-ai-control-center")"
 ACCESS_MODE="$(prompt_with_default 'Access mode (local-only/tailscale)' 'local-only')"
 PROFILE="$(prompt_with_default 'Profil (balanced/speed/video)' 'balanced')"
 DEFAULT_MODEL_ID="$(load_default_model_id)"
