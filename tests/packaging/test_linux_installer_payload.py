@@ -36,6 +36,8 @@ class LinuxInstallerPayloadTests(unittest.TestCase):
         self.assertIn('"threads": 8', content)
         self.assertIn('"installRoot": "$WORKSPACE_ROOT"', content)
         self.assertIn('find "$APP_ROOT/launchers" "$APP_ROOT/install" "$BIN_DIR" -type f -name "*.sh" -exec chmod +x {} +', content)
+        self.assertIn('if [ -x "$target/build/bin/llama-server" ]; then', content)
+        self.assertIn('if [ "$SKIP_LLAMA_SETUP" = "1" ]; then', content)
 
     def test_linux_launcher_uses_local_qwen_home_state(self):
         content = (ROOT / "launchers" / "linux" / "start-control-center-next.sh").read_text(encoding="utf-8")

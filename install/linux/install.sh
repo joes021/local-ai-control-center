@@ -112,12 +112,12 @@ ensure_opencode() {
 }
 
 ensure_llama() {
-  if [ "$SKIP_LLAMA_SETUP" = "1" ]; then
-    return 1
-  fi
   local target="$APPS_DIR/llama.cpp"
   if [ -x "$target/build/bin/llama-server" ]; then
     return 0
+  fi
+  if [ "$SKIP_LLAMA_SETUP" = "1" ]; then
+    return 1
   fi
   if [ ! -d "$target" ]; then
     git clone https://github.com/ggml-org/llama.cpp.git "$target" >/dev/null 2>&1 || return 1
