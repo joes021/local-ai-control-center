@@ -29,6 +29,110 @@ _UNSLOTH_MTP_REPO_STATUS = {
 }
 
 
+def resolve_installer_selected_model(
+    *,
+    local_qwen_home: Path | None = None,
+    selected_model_id: str = "",
+    selected_model_file: str = "",
+) -> dict[str, object]:
+    home = local_qwen_home or detect_local_qwen_home()
+    repo_root = Path(__file__).resolve().parents[3]
+    catalog_path = repo_root / "install" / "shared" / "recommended-models.json"
+    catalog = read_json_file(catalog_path)
+    install_state = read_json_file(home / "state" / "install-state.json")
+
+    recommended_entries: list[dict[str, object]] = []
+    if isinstance(catalog.get("recommended"), list):
+        recommended_entries = [item for item in catalog["recommended"] if isinstance(item, dict)]
+    default_model_id = str(catalog.get("defaultModelId", "") or "").strip()
+    if not default_model_id and recommended_entries:
+        default_model_id = str(recommended_entries[0].get("modelId", "") or "").strip()
+
+    resolved_id = (selected_model_id or str(install_state.get("selectedModelId", "") or "")).strip()
+    if not resolved_id:
+        resolved_id = default_model_id
+
+    selected_entry = next(
+        (item for item in recommended_entries if str(item.get("modelId", "") or "").strip() == resolved_id),
+        None,
+    )
+    if selected_entry is None and default_model_id:
+        resolved_id = default_model_id
+        selected_entry = next(
+            (item for item in recommended_entries if str(item.get("modelId", "") or "").strip() == resolved_id),
+            None,
+        )
+
+    resolved_file = (selected_model_file or str(install_state.get("selectedModelDownloadFile", "") or "")).strip()
+    if not resolved_file and selected_entry:
+        resolved_file = str(selected_entry.get("downloadFile", "") or "").strip()
+
+    return {
+        "selectedModelId": resolved_id,
+        "selectedModelFile": resolved_file,
+        "defaultModelId": default_model_id,
+        "catalogPath": str(catalog_path),
+        "hasSelection": bool(resolved_id and resolved_file),
+        "selectionLabel": str(selected_entry.get("label", "") or resolved_id) if selected_entry else resolved_id,
+        "selectionSource": "catalog" if selected_entry else "state",
+    }
+
+
+def build_installer_bootstrap_readiness(
+    *,
+    local_qwen_home: Path | None = None,
+    selected_model_id: str = "",
+    selected_model_file: str = "",
+    model_file: str = "",
+    bootstrap_status: str = "",
+    bootstrap_message: str = "",
+) -> dict[str, object]:
+    home = local_qwen_home or detect_local_qwen_home()
+    selection = resolve_installer_selected_model(
+        local_qwen_home=home,
+        selected_model_id=selected_model_id,
+        selected_model_file=selected_model_file,
+    )
+    resolved_file = str(selection.get("selectedModelFile", "") or "").strip()
+    models_dir = home / "models"
+    target_path = models_dir / resolved_file if resolved_file else None
+    installed_model_path = str(model_file or "").strip()
+
+    selected_model_downloaded = bool(
+        (target_path and target_path.is_file())
+        or (installed_model_path and resolved_file and Path(installed_model_path).name == resolved_file)
+    )
+
+    normalized_status = (bootstrap_status or "").strip()
+    if not selection["hasSelection"]:
+        normalized_status = normalized_status or "selection-missing"
+    elif selected_model_downloaded:
+        normalized_status = normalized_status or "ready"
+    else:
+        normalized_status = normalized_status or "download-required"
+
+    bootstrap_ready = bool(selection["hasSelection"] and selected_model_downloaded)
+    if not bootstrap_message:
+        if normalized_status == "selection-missing":
+            bootstrap_message = "Installer nema kompletan izbor modela za bootstrap fazu."
+        elif normalized_status == "ready":
+            bootstrap_message = "Selected model je spreman za prvi bootstrap korak."
+        elif normalized_status == "download-required":
+            bootstrap_message = "Selected model jos nije prisutan i mora da prodje bootstrap/download fazu."
+        else:
+            bootstrap_message = f"Model bootstrap status: {normalized_status}"
+
+    return {
+        **selection,
+        "modelBootstrap": {
+            "status": normalized_status,
+            "message": bootstrap_message,
+            "bootstrapReady": bootstrap_ready,
+            "selectedModelDownloaded": selected_model_downloaded,
+        },
+    }
+
+
 def load_models_payload() -> dict[str, list[dict[str, object]]]:
     home = detect_local_qwen_home()
     defaults = read_json_file(home / "config" / "profiles" / "defaults.json")

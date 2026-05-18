@@ -47,6 +47,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Source: "{#SourceRoot}\backend\*"; DestDir: "{app}\backend"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceRoot}\frontend\dist\*"; DestDir: "{app}\frontend\dist"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceRoot}\launchers\windows\*"; DestDir: "{app}\launchers\windows"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceRoot}\install\shared\*"; DestDir: "{app}\install\shared"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceRoot}\install\windows\*"; DestDir: "{app}\install\windows"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceRoot}\run_control_center_next.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\README.md"; DestDir: "{app}"; Flags: ignoreversion
@@ -60,11 +61,102 @@ Source: "{#SupportRoot}\launcher\windows\*"; DestDir: "{app}\support\launcher\wi
 [Code]
 var
   EditionPage: TInputOptionWizardPage;
+  ModelSelectionPage: TInputOptionWizardPage;
+  MoreModelsPage: TInputOptionWizardPage;
   AccessModePage: TInputOptionWizardPage;
   RuntimePage: TInputOptionWizardPage;
   SummaryPage: TOutputMsgMemoWizardPage;
   InstallRunExitCode: Integer;
   InstallRunStarted: Boolean;
+
+function GetWizardFallbackDefaultModelId(): string;
+begin
+  Result := 'gemma-4-e4b-it-q4-0';
+end;
+
+function GetPreferredModelOptionIndex(): Integer;
+var
+  vramHintText: string;
+  vramHintGiB: Integer;
+begin
+  Result := 0;
+  vramHintText := GetEnv('LOCAL_AI_INSTALLER_VRAM_GIB');
+  vramHintGiB := StrToIntDef(vramHintText, 0);
+
+  if vramHintGiB >= 24 then
+    Result := 2
+  else if vramHintGiB >= 12 then
+    Result := 1
+  else if GetWizardFallbackDefaultModelId() = 'qwen3.6-35b-a3b-ud-iq2-xxs' then
+    Result := 1
+  else if GetWizardFallbackDefaultModelId() = 'qwen3.6-35b-a3b-mtp-ud-q4-k-xl' then
+    Result := 2;
+end;
+
+function GetModelOptionCount(): Integer;
+begin
+  Result := 3;
+end;
+
+function GetModelField(ModelIndex: Integer; FieldName: string): string;
+begin
+  Result := '';
+
+  if ModelIndex = 0 then begin
+    if FieldName = 'id' then
+      Result := 'gemma-4-e4b-it-q4-0'
+    else if FieldName = 'label' then
+      Result := 'Gemma 4 E4B Instruct Q4_0'
+    else if FieldName = 'download' then
+      Result := 'gemma-4-E4B-it-Q4_0.gguf'
+    else if FieldName = 'vram' then
+      Result := '6 GB'
+    else if FieldName = 'option' then
+      Result := 'Gemma 4 E4B Instruct Q4_0 - 6 GB VRAM class - safest default';
+    exit;
+  end;
+
+  if ModelIndex = 1 then begin
+    if FieldName = 'id' then
+      Result := 'qwen3.6-35b-a3b-ud-iq2-xxs'
+    else if FieldName = 'label' then
+      Result := 'Qwen3.6 35B A3B UD IQ2_XXS'
+    else if FieldName = 'download' then
+      Result := 'Qwen3.6-35B-A3B-UD-IQ2_XXS.gguf'
+    else if FieldName = 'vram' then
+      Result := '12 GB'
+    else if FieldName = 'option' then
+      Result := 'Qwen3.6 35B A3B UD IQ2_XXS - 12 GB VRAM class - balanced Qwen pick';
+    exit;
+  end;
+
+  if ModelIndex = 2 then begin
+    if FieldName = 'id' then
+      Result := 'qwen3.6-35b-a3b-mtp-ud-q4-k-xl'
+    else if FieldName = 'label' then
+      Result := 'Qwen3.6 35B A3B MTP UD Q4_K_XL'
+    else if FieldName = 'download' then
+      Result := 'Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_XL'
+    else if FieldName = 'vram' then
+      Result := '24 GB'
+    else if FieldName = 'option' then
+      Result := 'Qwen3.6 35B A3B MTP UD Q4_K_XL - 24 GB VRAM class - high-end profile';
+    exit;
+  end;
+end;
+
+function GetSelectedModelIndex(): Integer;
+var
+  i: Integer;
+begin
+  Result := 0;
+  for i := 0 to GetModelOptionCount() - 1 do begin
+    if ModelSelectionPage.Values[i] then begin
+      Result := i;
+      exit;
+    end;
+  end;
+end;
 
 function GetSelectedEdition(): string;
 begin
@@ -82,28 +174,64 @@ begin
     Result := 'tailscale';
 end;
 
+function GetSelectedModelId(): string;
+begin
+  Result := GetModelField(GetSelectedModelIndex(), 'id');
+end;
+
+function GetSelectedModelLabel(): string;
+begin
+  Result := GetModelField(GetSelectedModelIndex(), 'label');
+end;
+
+function GetSelectedModelDownloadFile(): string;
+begin
+  Result := GetModelField(GetSelectedModelIndex(), 'download');
+end;
+
+function GetSelectedModelVramLabel(): string;
+begin
+  Result := GetModelField(GetSelectedModelIndex(), 'vram');
+end;
+
+function ShouldShowMoreModelsAfterInstall(): Boolean;
+begin
+  Result := MoreModelsPage.Values[0];
+end;
+
 function GetInstallScriptParameters(): string;
 var
   turboSwitch: string;
   opencodeSwitch: string;
+  moreModelsSwitch: string;
 begin
   turboSwitch := '';
   opencodeSwitch := '';
+  moreModelsSwitch := '';
   if not RuntimePage.Values[1] then
     turboSwitch := ' -SkipTurboQuant';
   if not RuntimePage.Values[0] then
     opencodeSwitch := ' -SkipOpenCodeInstall';
+  if ShouldShowMoreModelsAfterInstall() then
+    moreModelsSwitch := ' -ShowMoreModelsAfterInstall';
 
   Result :=
     '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\install\windows\install.ps1') + '"' +
     ' -InstallRoot "' + ExpandConstant('{userprofile}\LocalQwenHome') + '"' +
     ' -Edition "' + GetSelectedEdition() + '"' +
     ' -AccessMode "' + GetSelectedAccessMode() + '"' +
+    ' -SelectedModelId "' + GetSelectedModelId() + '"' +
+    ' -SelectedModelLabel "' + GetSelectedModelLabel() + '"' +
+    ' -SelectedModelDownloadFile "' + GetSelectedModelDownloadFile() + '"' +
+    ' -SelectedModelVramClass "' + GetSelectedModelVramLabel() + '"' +
     ' -Profile "balanced"' +
-    opencodeSwitch + turboSwitch;
+    opencodeSwitch + turboSwitch + moreModelsSwitch;
 end;
 
 procedure InitializeWizard();
+var
+  preferredModelIndex: Integer;
+  modelIndex: Integer;
 begin
   InstallRunExitCode := 0;
   InstallRunStarted := False;
@@ -120,8 +248,31 @@ begin
   EditionPage.Add('Classic - legacy shell only');
   EditionPage.Values[0] := True;
 
-  AccessModePage := CreateInputOptionPage(
+  ModelSelectionPage := CreateInputOptionPage(
     EditionPage.ID,
+    'Guided model selection',
+    'Choose a starter model from the recommended installer picks',
+    'The installer exposes three recommended models. Wizard preselection currently uses a local fallback plus optional LOCAL_AI_INSTALLER_VRAM_GIB hint. The authoritative shared catalog is read later by install.ps1.',
+    True,
+    False
+  );
+  for modelIndex := 0 to GetModelOptionCount() - 1 do
+    ModelSelectionPage.Add(GetModelField(modelIndex, 'option'));
+  preferredModelIndex := GetPreferredModelOptionIndex();
+  ModelSelectionPage.Values[preferredModelIndex] := True;
+
+  MoreModelsPage := CreateInputOptionPage(
+    ModelSelectionPage.ID,
+    'More model options',
+    'Lightweight placeholder hook',
+    'Prikazi jos modela does not open a browser inside setup. It only saves a post-install handoff so the app can later guide the user to Browser > Models.',
+    False,
+    False
+  );
+  MoreModelsPage.Add('Prikazi jos modela posle instalacije');
+
+  AccessModePage := CreateInputOptionPage(
+    MoreModelsPage.ID,
     'Access mode',
     'Choose how the installer should expose the control center',
     'Access mode changes how the service binds after setup. local-only is safest. tailscale exposes the UI through your tailscale network.',
@@ -177,6 +328,9 @@ begin
     InstallRunStarted := True;
     SummaryText :=
       'Edition: ' + GetSelectedEdition() + #13#10 +
+      'Guided model selection: ' + GetSelectedModelLabel() + ' [' + GetSelectedModelId() + ']' + #13#10 +
+      'Model VRAM class: ' + GetSelectedModelVramLabel() + #13#10 +
+      'Prikazi jos modela: ' + IntToStr(Integer(ShouldShowMoreModelsAfterInstall())) + #13#10 +
       'Access mode: ' + GetSelectedAccessMode() + #13#10 +
       'OpenCode: ' + IntToStr(Integer(RuntimePage.Values[0])) + #13#10 +
       'TurboQuant: ' + IntToStr(Integer(RuntimePage.Values[1]));

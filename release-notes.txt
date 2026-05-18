@@ -46,3 +46,8 @@ v2.21.0
 v2.23.8
 - Windows installer sada zapisuje `install.log` i završni summary prikazuje i putanju do loga i preporučeni sledeći korak kada recovery nije uspeo.
 - Release automation sada generiše stvarni `support-matrix.json` sa verzijom, release URL-om, artifact imenima i platformskim statusima umesto statičnog kopiranog template-a.
+v2.24.0
+- Installer sada koristi shared katalog sa tri vodjena preporucena modela i cuva izabrani model kao stvarni install contract umesto samo wizard metadata handoff-a.
+- Model bootstrap je podignut na success gate: instalacija sada proverava da li je selected model stvarno prisutan i obara Finish ako bootstrap/download nije spreman.
+- Dodat je first-run probe sa promptom `Reply with exactly OK and nothing else.` i Finish sada zavisi i od stvarnog odgovora modela, ne samo od health porta.
+- Repair tok sada vraca human-readable rezultat i siguran sledeci korak za netehnicke korisnike.

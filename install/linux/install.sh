@@ -12,6 +12,8 @@ INSTALL_OPENCODE="${INSTALL_OPENCODE:-1}"
 SKIP_LLAMA_SETUP="${SKIP_LLAMA_SETUP:-0}"
 INSTALL_TURBOQUANT="${INSTALL_TURBOQUANT:-1}"
 SKIP_MODEL_DOWNLOAD="${SKIP_MODEL_DOWNLOAD:-1}"
+SELECTED_MODEL_ID="${SELECTED_MODEL_ID:-}"
+SELECTED_MODEL_FILE="${SELECTED_MODEL_FILE:-}"
 
 PAYLOAD_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WORKSPACE_ROOT="$INSTALL_ROOT"
@@ -27,6 +29,7 @@ INSTALL_REPORT_PATH="$STATE_DIR/install-report.json"
 SETTINGS_PATH="$STATE_DIR/settings.json"
 RUNTIME_CONFIG_PATH="$STATE_DIR/runtime-config.json"
 OPENCODE_WORKSPACE_DIR="$WORKSPACE_ROOT/opencode-workspace"
+RECOMMENDED_MODELS_PATH="$PAYLOAD_ROOT/install/shared/recommended-models.json"
 TARGET_ARCH="$(cat "$PAYLOAD_ROOT/.target-architecture" 2>/dev/null || echo "unknown")"
 HOST_ARCH="$(uname -m)"
 
@@ -57,6 +60,25 @@ copy_dir_content() {
     mkdir -p "$target"
     cp -R "$source"/. "$target"/
   fi
+}
+
+normalize_shell_scripts() {
+  for target in "$@"; do
+    if [ -d "$target" ]; then
+      find "$target" -type f -name "*.sh" -print0 | while IFS= read -r -d '' file; do
+        python3 - <<'PY' "$file"
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+data = path.read_bytes()
+normalized = data.replace(b"\r\n", b"\n")
+if normalized != data:
+    path.write_bytes(normalized)
+PY
+      done
+    fi
+  done
 }
 
 write_json() {
@@ -179,6 +201,258 @@ ensure_turboquant() {
     return 0
   fi
   printf 'not-installed'
+}
+
+json_quote() {
+  python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"
+}
+
+build_model_bootstrap_state() {
+  local selected_model_id="$1"
+  local selected_model_file="$2"
+  local installed_model_file="${3:-}"
+  local bootstrap_status="${4:-}"
+  local bootstrap_message="${5:-}"
+  local selected_model_path=""
+  local selected_model_downloaded="false"
+  local bootstrap_ready="false"
+
+  if [ -n "$selected_model_file" ]; then
+    selected_model_path="$WORKSPACE_ROOT/models/$selected_model_file"
+  fi
+  if [ -n "$selected_model_path" ] && [ -f "$selected_model_path" ]; then
+    selected_model_downloaded="true"
+  elif [ -n "$installed_model_file" ] && [ -n "$selected_model_file" ] && [ "$(basename "$installed_model_file")" = "$selected_model_file" ]; then
+    selected_model_downloaded="true"
+  fi
+
+  if [ -z "$bootstrap_status" ]; then
+    if [ -z "$selected_model_id" ] || [ -z "$selected_model_file" ]; then
+      bootstrap_status="selection-missing"
+    elif [ "$selected_model_downloaded" = "true" ]; then
+      bootstrap_status="ready"
+    else
+      bootstrap_status="download-required"
+    fi
+  fi
+
+  if [ "$selected_model_downloaded" = "true" ] && [ -n "$selected_model_id" ] && [ -n "$selected_model_file" ]; then
+    bootstrap_ready="true"
+  fi
+
+  if [ -z "$bootstrap_message" ]; then
+    case "$bootstrap_status" in
+      selection-missing) bootstrap_message="Installer nema kompletan selected model selection za model bootstrap fazu." ;;
+      ready) bootstrap_message="Selected model je spreman za model bootstrap fazu." ;;
+      downloaded) bootstrap_message="Selected model je uspesno preuzet kroz model bootstrap fazu." ;;
+      download-required) bootstrap_message="Selected model jos nije prisutan i mora da prodje model bootstrap/download fazu." ;;
+      download-skipped) bootstrap_message="Model bootstrap nije kompletan jer je download preskocen." ;;
+      *) bootstrap_message="Model bootstrap status: $bootstrap_status" ;;
+    esac
+  fi
+
+  cat <<EOF
+{
+  "selectedModelId": $(json_quote "$selected_model_id"),
+  "selectedModelFile": $(json_quote "$selected_model_file"),
+  "selectedModelPath": $(json_quote "$selected_model_path"),
+  "selectedModelDownloaded": $selected_model_downloaded,
+  "modelBootstrap": {
+    "status": $(json_quote "$bootstrap_status"),
+    "message": $(json_quote "$bootstrap_message"),
+    "bootstrapReady": $bootstrap_ready,
+    "selectedModelDownloaded": $selected_model_downloaded
+  }
+}
+EOF
+}
+
+run_model_bootstrap() {
+  local selected_model_id="$1"
+  local selected_model_file="$2"
+  local installed_model_file="${3:-}"
+  local bootstrap_json=""
+
+  bootstrap_json="$(build_model_bootstrap_state "$selected_model_id" "$selected_model_file" "$installed_model_file")"
+  if python3 - <<'PY' "$bootstrap_json"
+import json, sys
+payload = json.loads(sys.argv[1])
+raise SystemExit(0 if payload["modelBootstrap"]["bootstrapReady"] else 1)
+PY
+  then
+    printf '%s\n' "$bootstrap_json"
+    return 0
+  fi
+
+  if [ -z "$selected_model_id" ] || [ -z "$selected_model_file" ]; then
+    printf '%s\n' "$bootstrap_json"
+    return 0
+  fi
+
+  if [ "$SKIP_MODEL_DOWNLOAD" = "1" ]; then
+    build_model_bootstrap_state "$selected_model_id" "$selected_model_file" "$installed_model_file" "download-skipped"
+    return 0
+  fi
+
+  local manage_models_script="$LEGACY_LAUNCHERS_DIR/manage-models.sh"
+  if [ ! -x "$manage_models_script" ]; then
+    manage_models_script="$APP_ROOT/install/linux/manage-models.sh"
+  fi
+  if [ ! -x "$manage_models_script" ]; then
+    build_model_bootstrap_state "$selected_model_id" "$selected_model_file" "$installed_model_file" "download-script-missing"
+    return 0
+  fi
+
+  if bash "$manage_models_script" download "$selected_model_id" >/dev/null 2>&1; then
+    build_model_bootstrap_state "$selected_model_id" "$selected_model_file" "$WORKSPACE_ROOT/models/$selected_model_file" "downloaded"
+    return 0
+  fi
+
+  build_model_bootstrap_state "$selected_model_id" "$selected_model_file" "$installed_model_file" "download-failed"
+}
+
+run_first_run_probe() {
+  local runtime_port="${1:-}"
+  local model_bootstrap_json="$2"
+  local probe_prompt="Reply with exactly OK and nothing else."
+
+  if ! python3 - <<'PY' "$model_bootstrap_json"
+import json, sys
+payload = json.loads(sys.argv[1])
+raise SystemExit(0 if payload["modelBootstrap"]["bootstrapReady"] else 1)
+PY
+  then
+    cat <<EOF
+{
+  "probePrompt": $(json_quote "$probe_prompt"),
+  "probeResponse": "",
+  "firstRunProbe": {
+    "status": "bootstrap-not-ready",
+    "message": "First-run probe nije pokrenut jer model bootstrap nije spreman.",
+    "probeReady": false
+  }
+}
+EOF
+    return 0
+  fi
+
+  if [ -z "$runtime_port" ]; then
+    cat <<EOF
+{
+  "probePrompt": $(json_quote "$probe_prompt"),
+  "probeResponse": "",
+  "firstRunProbe": {
+    "status": "runtime-unavailable",
+    "message": "First-run probe nije pokrenut jer runtime health nije potvrdjen.",
+    "probeReady": false
+  }
+}
+EOF
+    return 0
+  fi
+
+  local raw_response probe_analysis probe_status probe_message probe_ready probe_response
+  raw_response="$(curl --silent --show-error --fail "http://127.0.0.1:${runtime_port}/v1/chat/completions" \
+    -H "Content-Type: application/json" \
+    -d "{\"messages\":[{\"role\":\"user\",\"content\":\"${probe_prompt}\"}],\"max_tokens\":8,\"temperature\":0}" 2>/dev/null || true)"
+
+  if [ -z "$raw_response" ]; then
+    cat <<EOF
+{
+  "probePrompt": $(json_quote "$probe_prompt"),
+  "probeResponse": "",
+  "firstRunProbe": {
+    "status": "probe-failed",
+    "message": "First-run probe nije dobio odgovor od lokalnog model endpointa.",
+    "probeReady": false
+  }
+}
+EOF
+    return 0
+  fi
+
+  probe_analysis="$(python3 - <<'PY' "$raw_response"
+import json, re, sys
+
+def normalize(value):
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+payload = json.loads(sys.argv[1])
+message = {}
+usage = {}
+try:
+    message = payload["choices"][0]["message"]
+except Exception:
+    message = {}
+try:
+    usage = payload["usage"]
+except Exception:
+    usage = {}
+
+content = normalize(message.get("content", ""))
+reasoning = normalize(message.get("reasoning_content", ""))
+completion_tokens = 0
+try:
+    completion_tokens = int(usage.get("completion_tokens", 0) or 0)
+except Exception:
+    completion_tokens = 0
+
+probe_ready = False
+status = "unexpected-response"
+message_text = "First-run probe je dobio neocekivan odgovor od modela."
+response_text = content or reasoning
+
+if content == "OK" or reasoning == "OK":
+    probe_ready = True
+    status = "ready"
+    message_text = "First-run probe je uspesno potvrdio da model odgovara na upit."
+    response_text = "OK"
+elif response_text or completion_tokens > 0:
+    probe_ready = True
+    status = "ready-non-exact"
+    message_text = "First-run probe je potvrdio da model odgovara, ali ne striktno sa exact OK."
+
+print(json.dumps({
+    "probeResponse": response_text,
+    "probeReady": probe_ready,
+    "status": status,
+    "message": message_text,
+}, ensure_ascii=False))
+PY
+)"
+
+  probe_status="$(python3 - <<'PY' "$probe_analysis"
+import json, sys
+print(json.loads(sys.argv[1])["status"])
+PY
+)"
+  probe_message="$(python3 - <<'PY' "$probe_analysis"
+import json, sys
+print(json.loads(sys.argv[1])["message"])
+PY
+)"
+  probe_ready="$(python3 - <<'PY' "$probe_analysis"
+import json, sys
+print(str(json.loads(sys.argv[1])["probeReady"]).lower())
+PY
+)"
+  probe_response="$(python3 - <<'PY' "$probe_analysis"
+import json, sys
+print(json.loads(sys.argv[1])["probeResponse"])
+PY
+)"
+
+  cat <<EOF
+{
+  "probePrompt": $(json_quote "$probe_prompt"),
+  "probeResponse": $(json_quote "$probe_response"),
+  "firstRunProbe": {
+    "status": $(json_quote "$probe_status"),
+    "message": $(json_quote "$probe_message"),
+    "probeReady": $probe_ready
+  }
+}
+EOF
 }
 
 write_launcher_wrapper() {
@@ -316,6 +590,7 @@ copy_if_exists "$PAYLOAD_ROOT/version.json" "$APP_ROOT/version.json"
 copy_if_exists "$PAYLOAD_ROOT/version.json" "$WORKSPACE_ROOT/version.json"
 copy_if_exists "$PAYLOAD_ROOT/release-notes.txt" "$APP_ROOT/release-notes.txt"
 copy_if_exists "$PAYLOAD_ROOT/release-notes.txt" "$WORKSPACE_ROOT/release-notes.txt"
+normalize_shell_scripts "$APP_ROOT/launchers" "$APP_ROOT/install" "$LEGACY_LAUNCHERS_DIR" "$BIN_DIR"
 find "$APP_ROOT/launchers" "$APP_ROOT/install" "$BIN_DIR" -type f -name "*.sh" -exec chmod +x {} + 2>/dev/null || true
 patch_legacy_linux_launchers
 
@@ -349,8 +624,38 @@ HEALTHY_RUNTIME_PORT="$(detect_healthy_runtime_port || true)"
 WRAPPER_PATH="$(write_launcher_wrapper)"
 write_desktop_entry "$WRAPPER_PATH"
 STARTED_CONTROL_CENTER_URL=""
+MODEL_FILE_BEFORE_BOOTSTRAP=""
+if [ -f "$INSTALL_STATE_PATH" ]; then
+  MODEL_FILE_BEFORE_BOOTSTRAP="$(python3 - <<'PY' "$INSTALL_STATE_PATH"
+import json, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    data = {}
+print(data.get("modelFile", ""))
+PY
+)"
+fi
+MODEL_BOOTSTRAP_JSON="$(run_model_bootstrap "$SELECTED_MODEL_ID" "$SELECTED_MODEL_FILE" "$MODEL_FILE_BEFORE_BOOTSTRAP")"
+MODEL_BOOTSTRAP_STATUS="$(python3 - <<'PY' "$MODEL_BOOTSTRAP_JSON"
+import json, sys
+print(json.loads(sys.argv[1])["modelBootstrap"]["status"])
+PY
+)"
+MODEL_BOOTSTRAP_READY="$(python3 - <<'PY' "$MODEL_BOOTSTRAP_JSON"
+import json, sys
+print(str(json.loads(sys.argv[1])["modelBootstrap"]["bootstrapReady"]).lower())
+PY
+)"
+MODEL_BOOTSTRAP_DOWNLOADED="$(python3 - <<'PY' "$MODEL_BOOTSTRAP_JSON"
+import json, sys
+print(str(json.loads(sys.argv[1])["selectedModelDownloaded"]).lower())
+PY
+)"
 
-python3 - <<'PY' "$INSTALL_STATE_PATH" "$SETTINGS_PATH" "$WORKSPACE_ROOT" "$PROFILE" "$ACCESS_MODE" "$OPENCODE_WORKSPACE_DIR" "$LLAMA_BIN" "$TURBO_BIN" "$HEALTHY_RUNTIME_PORT"
+python3 - <<'PY' "$INSTALL_STATE_PATH" "$SETTINGS_PATH" "$WORKSPACE_ROOT" "$PROFILE" "$ACCESS_MODE" "$OPENCODE_WORKSPACE_DIR" "$LLAMA_BIN" "$TURBO_BIN" "$HEALTHY_RUNTIME_PORT" "$RECOMMENDED_MODELS_PATH" "$SELECTED_MODEL_ID" "$SELECTED_MODEL_FILE" "$MODEL_BOOTSTRAP_JSON"
 import json, os, subprocess, sys
 from pathlib import Path
 
@@ -363,6 +668,10 @@ opencode_workspace = sys.argv[6]
 llama_bin = sys.argv[7]
 turbo_bin = sys.argv[8]
 healthy_runtime_port = sys.argv[9].strip()
+recommended_models_path = Path(sys.argv[10])
+selected_model_id_input = sys.argv[11].strip()
+selected_model_file_input = sys.argv[12].strip()
+bootstrap_payload = json.loads(sys.argv[13])
 
 def load_json(path: Path) -> dict:
     if not path.is_file():
@@ -374,6 +683,25 @@ def load_json(path: Path) -> dict:
 
 existing_state = load_json(install_state_path)
 existing_settings = load_json(settings_path)
+
+def load_recommended_model_defaults(path: Path) -> tuple[str, dict[str, dict]]:
+    payload = load_json(path)
+    recommended = payload.get("recommended") if isinstance(payload, dict) else []
+    if not isinstance(recommended, list):
+        recommended = []
+    recommended_by_id = {}
+    for entry in recommended[:3]:
+        if not isinstance(entry, dict):
+            continue
+        model_id = str(entry.get("modelId") or "").strip()
+        if model_id:
+            recommended_by_id[model_id] = entry
+    default_model_id = ""
+    if isinstance(payload, dict):
+        default_model_id = str(payload.get("defaultModelId") or "").strip()
+    if not default_model_id and recommended_by_id:
+        default_model_id = next(iter(recommended_by_id))
+    return default_model_id, recommended_by_id
 
 def detect_process_runtime(port_hint: str) -> tuple[str, str]:
     try:
@@ -399,6 +727,14 @@ def detect_process_runtime(port_hint: str) -> tuple[str, str]:
 detected_exe, detected_model = detect_process_runtime(healthy_runtime_port)
 models_dir = workspace_root / "models"
 preferred_model = models_dir / "qwen36-35b-a3b-IQ2_M.gguf"
+default_selected_model_id, recommended_models = load_recommended_model_defaults(recommended_models_path)
+
+selected_model_id = selected_model_id_input or str(existing_state.get("selectedModelId") or "").strip()
+selected_model_file = selected_model_file_input or str(existing_state.get("selectedModelFile") or "").strip()
+if not selected_model_id:
+    selected_model_id = default_selected_model_id
+if selected_model_id and not selected_model_file:
+    selected_model_file = str(recommended_models.get(selected_model_id, {}).get("downloadFile") or "").strip()
 
 model_file = str(existing_state.get("modelFile") or "").strip()
 if not model_file and detected_model:
@@ -409,12 +745,20 @@ if not model_file and models_dir.is_dir():
     ggufs = sorted((path for path in models_dir.glob("*.gguf") if path.is_file()), key=lambda p: p.stat().st_size, reverse=True)
     if ggufs:
         model_file = str(ggufs[0])
+if bootstrap_payload.get("selectedModelDownloaded") and bootstrap_payload.get("selectedModelPath"):
+    bootstrap_model_path = str(bootstrap_payload.get("selectedModelPath") or "").strip()
+    if bootstrap_model_path:
+        model_file = bootstrap_model_path
 
 model_id = str(existing_state.get("modelId") or "").strip()
 if model_id in {"", "none"} and model_file:
     model_id = Path(model_file).name
 if not model_id:
     model_id = "none"
+if not selected_model_id and model_id not in {"", "none"}:
+    selected_model_id = model_id
+if not selected_model_file and model_file:
+    selected_model_file = Path(model_file).name
 
 runtime_port = int(existing_state.get("port") or 0) if str(existing_state.get("port") or "").isdigit() else 0
 if healthy_runtime_port:
@@ -449,6 +793,13 @@ settings = {
         "exploreSteps": int(existing_settings.get("opencode", {}).get("exploreSteps", 60) or 60),
         "workingDirectory": str(existing_settings.get("opencode", {}).get("workingDirectory", opencode_workspace) or opencode_workspace),
     },
+    "modelSelection": {
+        "selectedModelId": selected_model_id,
+        "selectedModelFile": selected_model_file,
+        "selectedModelDownloaded": bool(bootstrap_payload.get("selectedModelDownloaded", False)),
+        "bootstrapReady": bool(bootstrap_payload.get("modelBootstrap", {}).get("bootstrapReady", False)),
+        "modelBootstrapStatus": str(bootstrap_payload.get("modelBootstrap", {}).get("status", "") or ""),
+    },
     "threads": int(existing_settings.get("threads", 8) or 8),
     "gpuLayers": int(existing_settings.get("gpuLayers", 99) or 99),
     "batch": int(existing_settings.get("batch", 2048) or 2048),
@@ -464,6 +815,12 @@ install_state = {
     "profile": profile or str(existing_state.get("profile", "balanced") or "balanced"),
     "modelId": model_id,
     "modelFile": model_file,
+    "selectedModelId": selected_model_id,
+    "selectedModelFile": selected_model_file,
+    "selectedModelDownloaded": bool(bootstrap_payload.get("selectedModelDownloaded", False)),
+    "modelBootstrapStatus": str(bootstrap_payload.get("modelBootstrap", {}).get("status", "") or ""),
+    "modelBootstrapMessage": str(bootstrap_payload.get("modelBootstrap", {}).get("message", "") or ""),
+    "bootstrapReady": bool(bootstrap_payload.get("modelBootstrap", {}).get("bootstrapReady", False)),
     "port": runtime_port,
     "llamaServerExe": llama_server_exe,
     "turboServerExe": turbo_server_exe,
@@ -519,6 +876,7 @@ cat > "$INSTALL_REPORT_PATH" <<EOF
   "localUrl": "http://127.0.0.1:3210",
   "targetArchitecture": "$TARGET_ARCH",
   "hostArchitecture": "$HOST_ARCH",
+  "modelBootstrap": $MODEL_BOOTSTRAP_JSON,
   "components": {
     "controlCenter": { "ok": true, "path": "$APP_ROOT" },
     "llamaCppRuntime": { "ok": $LLAMA_OK, "path": "$( [ -e "$LLAMA_BIN" ] && printf '%s' "$LLAMA_BIN" )" },
@@ -552,6 +910,18 @@ with open(path, "w", encoding="utf-8") as f:
 PY
 fi
 
+FIRST_RUN_PROBE_JSON="$(run_first_run_probe "$HEALTHY_RUNTIME_PORT" "$MODEL_BOOTSTRAP_JSON")"
+FIRST_RUN_PROBE_STATUS="$(python3 - <<'PY' "$FIRST_RUN_PROBE_JSON"
+import json, sys
+print(json.loads(sys.argv[1])["firstRunProbe"]["status"])
+PY
+)"
+FIRST_RUN_PROBE_READY="$(python3 - <<'PY' "$FIRST_RUN_PROBE_JSON"
+import json, sys
+print(str(json.loads(sys.argv[1])["firstRunProbe"]["probeReady"]).lower())
+PY
+)"
+
 echo "Install report:"
 echo "Edition: $INSTALL_VARIANT"
 echo "Control Center: OK"
@@ -559,6 +929,10 @@ echo "llama.cpp: $LLAMA_OK"
 echo "OpenCode: $OPENCODE_OK"
 echo "TurboQuant: $TURBO_STATUS"
 echo "Access mode: $ACCESS_MODE"
+echo "Model bootstrap: $MODEL_BOOTSTRAP_STATUS"
+echo "Bootstrap ready: $MODEL_BOOTSTRAP_READY"
+echo "Selected model downloaded: $MODEL_BOOTSTRAP_DOWNLOADED"
+echo "First-run probe: $FIRST_RUN_PROBE_STATUS"
 echo "Install root: $WORKSPACE_ROOT"
 echo "Launcher: $WRAPPER_PATH"
 if [ -n "$STARTED_CONTROL_CENTER_URL" ]; then
@@ -567,7 +941,30 @@ else
   echo "Control Center URL: start nije potvrdjen automatski"
 fi
 
+python3 - <<'PY' "$INSTALL_REPORT_PATH" "$FIRST_RUN_PROBE_JSON"
+import json, sys
+path = sys.argv[1]
+probe_payload = json.loads(sys.argv[2])
+with open(path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+data.setdefault("components", {})["firstRunProbe"] = {
+    **probe_payload["firstRunProbe"],
+    "probePrompt": probe_payload.get("probePrompt", ""),
+    "probeResponse": probe_payload.get("probeResponse", ""),
+}
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+PY
+
 if [ "$LLAMA_OK" != "true" ] || [ "$OPENCODE_OK" != "true" ]; then
   echo "Obavezne komponente nisu spremne." >&2
+  exit 1
+fi
+if [ "$MODEL_BOOTSTRAP_READY" != "true" ]; then
+  echo "Model bootstrap nije spreman." >&2
+  exit 1
+fi
+if [ "$FIRST_RUN_PROBE_READY" != "true" ]; then
+  echo "First-run probe nije spreman." >&2
   exit 1
 fi

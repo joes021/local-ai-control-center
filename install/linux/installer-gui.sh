@@ -5,6 +5,108 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_SCRIPT="$SCRIPT_DIR/install.sh"
 TUI_SCRIPT="$SCRIPT_DIR/installer-tui.sh"
 TARGET_ARCH="$(cat "$SCRIPT_DIR/../../.target-architecture" 2>/dev/null || uname -m)"
+RECOMMENDED_MODELS_PATH="$SCRIPT_DIR/../shared/recommended-models.json"
+
+fallback_default_model_id() {
+  printf '%s\n' "gemma-4-e4b-it-q4-0"
+}
+
+fallback_recommended_models() {
+  cat <<'EOF'
+gemma-4-e4b-it-q4-0|Gemma 4 E4B Instruct Q4_0|6 GB|Najbezbedniji podrazumevani izbor za slabije GPU konfiguracije i brz prvi start instalera.|gemma-4-E4B-it-Q4_0.gguf
+qwen3.6-35b-a3b-ud-iq2-xxs|Qwen3.6 35B A3B UD IQ2_XXS|12 GB|Balansiran Qwen izbor za korisnike koji hoce veci model uz umeren VRAM budzet.|Qwen3.6-35B-A3B-UD-IQ2_XXS.gguf
+qwen3.6-35b-a3b-mtp-ud-q4-k-xl|Qwen3.6 35B A3B MTP UD Q4_K_XL|24 GB|High-end preporuceni profil za sisteme koji ciljaju zakljucanu MTP varijantu i imaju 24 GB VRAM klase.|Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_XL
+EOF
+}
+
+load_default_model_id() {
+  if command -v python3 >/dev/null 2>&1 && [ -f "$RECOMMENDED_MODELS_PATH" ]; then
+    python3 - <<'PY' "$RECOMMENDED_MODELS_PATH" 2>/dev/null || fallback_default_model_id
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+print(payload.get("defaultModelId") or "gemma-4-e4b-it-q4-0")
+PY
+    return 0
+  fi
+  fallback_default_model_id
+}
+
+load_recommended_models() {
+  if command -v python3 >/dev/null 2>&1 && [ -f "$RECOMMENDED_MODELS_PATH" ]; then
+    python3 - <<'PY' "$RECOMMENDED_MODELS_PATH" 2>/dev/null || fallback_recommended_models
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+for entry in payload.get("recommended", [])[:3]:
+    print("|".join([
+        str(entry.get("modelId", "")),
+        str(entry.get("label", "")),
+        str(entry.get("vramClass", {}).get("label", "")),
+        str(entry.get("description", "")),
+        str(entry.get("downloadFile", "")),
+    ]))
+PY
+    return 0
+  fi
+  fallback_recommended_models
+}
+
+find_model_download_file() {
+  local target_model_id="$1"
+  local entry model_id label vram_label description download_file
+  for entry in "${RECOMMENDED_MODELS[@]}"; do
+    IFS='|' read -r model_id label vram_label description download_file <<<"$entry"
+    if [ "$model_id" = "$target_model_id" ]; then
+      printf '%s\n' "$download_file"
+      return 0
+    fi
+  done
+  return 1
+}
+
+pick_guided_model_gui() {
+  local default_model_id="$1"
+  local entry model_id label vram_label description download_file selected rows selection
+
+  while true; do
+    rows=()
+    for entry in "${RECOMMENDED_MODELS[@]}"; do
+      IFS='|' read -r model_id label vram_label description download_file <<<"$entry"
+      selected=FALSE
+      if [ "$model_id" = "$default_model_id" ]; then
+        selected=TRUE
+      fi
+      rows+=("$selected" "$model_id" "$label" "$vram_label" "$description")
+    done
+
+    selection="$(zenity --list \
+      --radiolist \
+      --title="Model selection" \
+      --text="Izaberi preporuceni model za prvi bootstrap korak" \
+      --column="Pick" --column="MODEL_ID" --column="Model" --column="VRAM" --column="Opis" \
+      "${rows[@]}" \
+      --extra-button="Prikazi jos modela")"
+
+    if [ -z "${selection:-}" ]; then
+      return 1
+    fi
+
+    if [ "$selection" = "Prikazi jos modela" ]; then
+      zenity --info \
+        --title="Prikazi jos modela" \
+        --text="Za sada installer vodi kroz 3 preporucena modela iz shared recommended-models.json payload-a. Sire model browse opcije dolaze u kasnijem model setup koraku."
+      continue
+    fi
+
+    printf '%s\n' "$selection"
+    return 0
+  done
+}
 
 has_desktop_session() {
   [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ] || [ "${XDG_SESSION_TYPE:-}" = "x11" ] || [ "${XDG_SESSION_TYPE:-}" = "wayland" ]
@@ -93,12 +195,13 @@ if [ -z "${PROFILE:-}" ]; then
   exit 1
 fi
 
-DOWNLOAD_MODEL_ANSWER=1
-if ! zenity --question \
-  --title="Model download" \
-  --text="Preuzmi preporuceni model odmah?"; then
-  DOWNLOAD_MODEL_ANSWER=0
+DEFAULT_MODEL_ID="$(load_default_model_id)"
+mapfile -t RECOMMENDED_MODELS < <(load_recommended_models)
+MODEL_ID="$(pick_guided_model_gui "$DEFAULT_MODEL_ID")"
+if [ -z "${MODEL_ID:-}" ]; then
+  exit 1
 fi
+MODEL_FILE="$(find_model_download_file "$MODEL_ID" || true)"
 
 INSTALL_OPENCODE_ANSWER=1
 if ! zenity --question \
@@ -136,7 +239,9 @@ export INSTALL_ROOT=$(printf '%q' "$INSTALL_ROOT")
 export INSTALL_VARIANT=$(printf '%q' "${INSTALL_VARIANT,,}")
 export ACCESS_MODE=$(printf '%q' "$ACCESS_MODE")
 export PROFILE=$(printf '%q' "$PROFILE")
-export SKIP_MODEL_DOWNLOAD=$([ "$DOWNLOAD_MODEL_ANSWER" -eq 1 ] && echo 0 || echo 1)
+export SELECTED_MODEL_ID=$(printf '%q' "$MODEL_ID")
+export SELECTED_MODEL_FILE=$(printf '%q' "$MODEL_FILE")
+export SKIP_MODEL_DOWNLOAD=0
 export INSTALL_OPENCODE=$([ "$INSTALL_OPENCODE_ANSWER" -eq 1 ] && echo 1 || echo 0)
 export SKIP_RUNTIME_BUILD=$([ "$BUILD_RUNTIME_ANSWER" -eq 1 ] && echo 0 || echo 1)
 export INSTALL_TURBOQUANT=$([ "$INSTALL_TURBOQUANT_ANSWER" -eq 1 ] && echo 1 || echo 0)

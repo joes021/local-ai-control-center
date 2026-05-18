@@ -6,11 +6,16 @@
     [string]$AccessMode = "local-only",
     [ValidateSet("balanced", "speed", "video")]
     [string]$Profile = "balanced",
+    [string]$SelectedModelId = "",
+    [string]$SelectedModelLabel = "",
+    [string]$SelectedModelDownloadFile = "",
+    [string]$SelectedModelVramClass = "",
     [switch]$SkipDependencies,
     [switch]$SkipOpenCodeInstall,
     [switch]$SkipLlamaSetup,
     [switch]$SkipTurboQuant,
-    [switch]$SkipModelDownload
+    [switch]$SkipModelDownload,
+    [switch]$ShowMoreModelsAfterInstall
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,6 +44,7 @@ $runtimeStatePath = Join-Path $stateDir "runtime-state.json"
 $serviceLifecyclePath = Join-Path $stateDir "server-lifecycle.json"
 $opencodeWorkspaceDir = Join-Path $workspaceRoot "opencode-workspace"
 $desktopDir = Join-Path $env:USERPROFILE "Desktop\Local AI Control Center"
+$recommendedModelsCatalogPath = Join-Path $payloadRoot "install\shared\recommended-models.json"
 
 function Ensure-Dir([string]$Path) {
     New-Item -ItemType Directory -Force -Path $Path | Out-Null
@@ -93,6 +99,80 @@ function Read-JsonFile {
     }
     catch {
         return $null
+    }
+}
+
+function Get-RecommendedModelCatalog {
+    if (-not (Test-Path $recommendedModelsCatalogPath)) {
+        return $null
+    }
+
+    try {
+        return Get-Content -Raw $recommendedModelsCatalogPath | ConvertFrom-Json
+    }
+    catch {
+        Write-InstallLogLine "Unable to parse recommended-models.json, falling back to installer-provided defaults."
+        return $null
+    }
+}
+
+function Resolve-SelectedModelSelection {
+    param(
+        [string]$RequestedModelId,
+        [string]$RequestedLabel,
+        [string]$RequestedDownloadFile,
+        [string]$RequestedVramClass
+    )
+
+    $catalog = Get-RecommendedModelCatalog
+    $catalogDefaultModelId = if ($catalog -and $catalog.defaultModelId) { [string]$catalog.defaultModelId } else { "gemma-4-e4b-it-q4-0" }
+    $resolvedModelId = [string]$RequestedModelId
+    $selectionSource = "wizard"
+    if ([string]::IsNullOrWhiteSpace($resolvedModelId)) {
+        $resolvedModelId = $catalogDefaultModelId
+        $selectionSource = "catalog-default"
+    }
+
+    $catalogEntry = $null
+    if ($catalog -and $catalog.recommended) {
+        $catalogEntry = $catalog.recommended | Where-Object { $_.modelId -eq $resolvedModelId } | Select-Object -First 1
+        if (-not $catalogEntry -and $resolvedModelId -ne $catalogDefaultModelId) {
+            $resolvedModelId = $catalogDefaultModelId
+            $catalogEntry = $catalog.recommended | Where-Object { $_.modelId -eq $resolvedModelId } | Select-Object -First 1
+            $selectionSource = "catalog-fallback"
+        }
+    }
+
+    $resolvedLabel = [string]$RequestedLabel
+    $resolvedDownloadFile = [string]$RequestedDownloadFile
+    $resolvedVramClass = [string]$RequestedVramClass
+    if ($catalogEntry) {
+        $resolvedLabel = [string]$catalogEntry.label
+        $resolvedDownloadFile = [string]$catalogEntry.downloadFile
+        if ($catalogEntry.vramClass -and $catalogEntry.vramClass.label) {
+            $resolvedVramClass = [string]$catalogEntry.vramClass.label
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($resolvedLabel)) {
+        $resolvedLabel = $resolvedModelId
+    }
+    if ([string]::IsNullOrWhiteSpace($resolvedDownloadFile)) {
+        $resolvedDownloadFile = ""
+    }
+    if ([string]::IsNullOrWhiteSpace($resolvedVramClass)) {
+        $resolvedVramClass = ""
+    }
+
+    return [ordered]@{
+        modelId = $resolvedModelId
+        label = $resolvedLabel
+        downloadFile = $resolvedDownloadFile
+        vramClass = $resolvedVramClass
+        source = $selectionSource
+        catalogPath = $recommendedModelsCatalogPath
+        defaultModelId = $catalogDefaultModelId
+        showMoreModelsAfterInstall = [bool]$ShowMoreModelsAfterInstall
     }
 }
 
@@ -295,11 +375,195 @@ function Get-PreferredModelFile {
     return ""
 }
 
+function Get-ModelBootstrapState {
+    param(
+        [object]$SelectedModelSelection,
+        [string]$InstalledModelFile = "",
+        [string]$BootstrapStatus = "",
+        [string]$BootstrapMessage = ""
+    )
+
+    $selectedModelId = [string]$SelectedModelSelection.modelId
+    $selectedModelDownloadFile = [string]$SelectedModelSelection.downloadFile
+    $selectedModelPath = if ($selectedModelDownloadFile) { Join-Path (Join-Path $workspaceRoot "models") $selectedModelDownloadFile } else { "" }
+    $selectedModelDownloaded = $false
+    if ($selectedModelPath -and (Test-Path $selectedModelPath)) {
+        $selectedModelDownloaded = $true
+    }
+    elseif ($InstalledModelFile -and $selectedModelDownloadFile -and ((Split-Path $InstalledModelFile -Leaf) -eq $selectedModelDownloadFile)) {
+        $selectedModelDownloaded = $true
+    }
+
+    $effectiveStatus = $BootstrapStatus
+    if ([string]::IsNullOrWhiteSpace($effectiveStatus)) {
+        if ([string]::IsNullOrWhiteSpace($selectedModelId) -or [string]::IsNullOrWhiteSpace($selectedModelDownloadFile)) {
+            $effectiveStatus = "selection-missing"
+        }
+        elseif ($selectedModelDownloaded) {
+            $effectiveStatus = "ready"
+        }
+        else {
+            $effectiveStatus = "download-required"
+        }
+    }
+
+    $bootstrapReady = $selectedModelDownloaded -and -not ([string]::IsNullOrWhiteSpace($selectedModelId)) -and -not ([string]::IsNullOrWhiteSpace($selectedModelDownloadFile))
+    if ([string]::IsNullOrWhiteSpace($BootstrapMessage)) {
+        switch ($effectiveStatus) {
+            "selection-missing" { $BootstrapMessage = "Installer nema kompletan selected model selection za model bootstrap fazu." }
+            "ready" { $BootstrapMessage = "Selected model je spreman za model bootstrap fazu." }
+            "download-required" { $BootstrapMessage = "Selected model jos nije prisutan i mora da prodje model bootstrap/download fazu." }
+            "downloaded" { $BootstrapMessage = "Selected model je uspesno preuzet kroz model bootstrap fazu." }
+            "download-skipped" { $BootstrapMessage = "Model bootstrap nije kompletan jer je download preskocen." }
+            default { $BootstrapMessage = "Model bootstrap status: $effectiveStatus" }
+        }
+    }
+
+    return [ordered]@{
+        selectedModelId = $selectedModelId
+        selectedModelDownloadFile = $selectedModelDownloadFile
+        selectedModelPath = $selectedModelPath
+        selectedModelDownloaded = $selectedModelDownloaded
+        modelBootstrap = [ordered]@{
+            status = $effectiveStatus
+            message = $BootstrapMessage
+            bootstrapReady = $bootstrapReady
+            selectedModelDownloaded = $selectedModelDownloaded
+        }
+    }
+}
+
+function Invoke-ModelBootstrap {
+    param([object]$SelectedModelSelection)
+
+    $installedModelFile = Get-PreferredModelFile
+    $bootstrapState = Get-ModelBootstrapState -SelectedModelSelection $SelectedModelSelection -InstalledModelFile $installedModelFile
+    if ($bootstrapState.modelBootstrap.bootstrapReady) {
+        return $bootstrapState
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$bootstrapState.selectedModelId) -or [string]::IsNullOrWhiteSpace([string]$bootstrapState.selectedModelDownloadFile)) {
+        return $bootstrapState
+    }
+    if ($SkipModelDownload) {
+        return (Get-ModelBootstrapState -SelectedModelSelection $SelectedModelSelection -InstalledModelFile $installedModelFile -BootstrapStatus "download-skipped")
+    }
+
+    $manageModelsScript = Join-Path $legacyLaunchersDir "manage-models.ps1"
+    if (-not (Test-Path $manageModelsScript)) {
+        $manageModelsScript = Join-Path $launchersDir "manage-models.ps1"
+    }
+    if (-not (Test-Path $manageModelsScript)) {
+        return (Get-ModelBootstrapState -SelectedModelSelection $SelectedModelSelection -InstalledModelFile $installedModelFile -BootstrapStatus "download-script-missing")
+    }
+
+    Write-InstallLogLine "Model bootstrap start: modelId=$($bootstrapState.selectedModelId)"
+    try {
+        & (Get-WindowsPowerShellExe) -NoProfile -ExecutionPolicy Bypass -File $manageModelsScript -ModelId $bootstrapState.selectedModelId -Download | Out-Null
+    }
+    catch {
+        return (Get-ModelBootstrapState -SelectedModelSelection $SelectedModelSelection -InstalledModelFile (Get-PreferredModelFile) -BootstrapStatus "download-failed" -BootstrapMessage $_.Exception.Message)
+    }
+
+    return (Get-ModelBootstrapState -SelectedModelSelection $SelectedModelSelection -InstalledModelFile (Get-PreferredModelFile) -BootstrapStatus "downloaded")
+}
+
+function Invoke-FirstRunProbe {
+    param(
+        [Nullable[int]]$HealthyRuntimePort,
+        [object]$ModelBootstrapState
+    )
+
+    $probePrompt = "Reply with exactly OK and nothing else."
+    if (-not $ModelBootstrapState -or -not $ModelBootstrapState.modelBootstrap.bootstrapReady) {
+        return [ordered]@{
+            probePrompt = $probePrompt
+            probeResponse = ""
+            firstRunProbe = [ordered]@{
+                status = "bootstrap-not-ready"
+                message = "First-run probe nije pokrenut jer model bootstrap nije spreman."
+                probeReady = $false
+            }
+        }
+    }
+    if (-not $HealthyRuntimePort) {
+        return [ordered]@{
+            probePrompt = $probePrompt
+            probeResponse = ""
+            firstRunProbe = [ordered]@{
+                status = "runtime-unavailable"
+                message = "First-run probe nije pokrenut jer runtime health nije potvrdjen."
+                probeReady = $false
+            }
+        }
+    }
+
+    $probeUri = "http://127.0.0.1:$HealthyRuntimePort/v1/chat/completions"
+    $probeBody = @{
+        messages = @(
+            @{
+                role = "user"
+                content = $probePrompt
+            }
+        )
+        max_tokens = 8
+        temperature = 0
+    } | ConvertTo-Json -Depth 6
+
+    try {
+        $probeResult = Invoke-RestMethod -Uri $probeUri -Method Post -ContentType "application/json" -Body $probeBody -TimeoutSec 30
+        $probeContent = [string]($probeResult.choices[0].message.content)
+        $probeReasoning = [string]($probeResult.choices[0].message.reasoning_content)
+        $normalizedContent = ($probeContent -replace '\s+', ' ').Trim()
+        $normalizedReasoning = ($probeReasoning -replace '\s+', ' ').Trim()
+        $completionTokens = 0
+        if ($probeResult.usage -and $probeResult.usage.completion_tokens) {
+            $completionTokens = [int]$probeResult.usage.completion_tokens
+        }
+        $probeResponse = if (-not [string]::IsNullOrWhiteSpace($normalizedContent)) { $normalizedContent } else { $normalizedReasoning }
+        $probeReady = $false
+        $probeStatus = "unexpected-response"
+        $probeMessage = "First-run probe je dobio neocekivan odgovor od modela."
+        if ($normalizedContent -eq "OK" -or $normalizedReasoning -eq "OK") {
+            $probeReady = $true
+            $probeStatus = "ready"
+            $probeMessage = "First-run probe je uspesno potvrdio da model odgovara na upit."
+            $probeResponse = "OK"
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($probeResponse) -or $completionTokens -gt 0) {
+            $probeReady = $true
+            $probeStatus = "ready-non-exact"
+            $probeMessage = "First-run probe je potvrdio da model odgovara, ali ne striktno sa exact OK."
+        }
+        return [ordered]@{
+            probePrompt = $probePrompt
+            probeResponse = $probeResponse
+            firstRunProbe = [ordered]@{
+                status = $probeStatus
+                message = $probeMessage
+                probeReady = $probeReady
+            }
+        }
+    }
+    catch {
+        return [ordered]@{
+            probePrompt = $probePrompt
+            probeResponse = ""
+            firstRunProbe = [ordered]@{
+                status = "probe-failed"
+                message = $_.Exception.Message
+                probeReady = $false
+            }
+        }
+    }
+}
+
 function Update-InstallStateAndSettings {
     param(
         [bool]$LlamaReady,
         [string]$LlamaPath,
-        [string]$TurboServerPath
+        [string]$TurboServerPath,
+        [object]$SelectedModelSelection,
+        [object]$ModelBootstrapState = $null
     )
 
     $existingState = Read-JsonFile $installStatePath
@@ -316,6 +580,9 @@ function Update-InstallStateAndSettings {
     if (-not $modelFile) {
         $modelFile = Get-PreferredModelFile
     }
+    if ($ModelBootstrapState -and $ModelBootstrapState.selectedModelDownloaded -and $ModelBootstrapState.selectedModelPath -and (Test-Path ([string]$ModelBootstrapState.selectedModelPath))) {
+        $modelFile = [string]$ModelBootstrapState.selectedModelPath
+    }
 
     $modelId = if ($modelFile) { Split-Path $modelFile -Leaf } else { "none" }
     $runtimePort = if ($running.Port) { [int]$running.Port } elseif ($existingState -and $existingState.port) { [int]$existingState.port } else { 8091 }
@@ -327,6 +594,18 @@ function Update-InstallStateAndSettings {
         profile = if ($existingState -and $existingState.profile) { [string]$existingState.profile } else { $Profile }
         modelId = $modelId
         modelFile = $modelFile
+        selectedModelId = [string]$SelectedModelSelection.modelId
+        selectedModelLabel = [string]$SelectedModelSelection.label
+        selectedModelDownloadFile = [string]$SelectedModelSelection.downloadFile
+        selectedModelVramClass = [string]$SelectedModelSelection.vramClass
+        selectedModelSource = [string]$SelectedModelSelection.source
+        selectedModelCatalogPath = [string]$SelectedModelSelection.catalogPath
+        defaultModelId = [string]$SelectedModelSelection.defaultModelId
+        showMoreModelsAfterInstall = [bool]$SelectedModelSelection.showMoreModelsAfterInstall
+        selectedModelDownloaded = [bool]($ModelBootstrapState -and $ModelBootstrapState.selectedModelDownloaded)
+        modelBootstrapStatus = if ($ModelBootstrapState) { [string]$ModelBootstrapState.modelBootstrap.status } else { "" }
+        modelBootstrapMessage = if ($ModelBootstrapState) { [string]$ModelBootstrapState.modelBootstrap.message } else { "" }
+        bootstrapReady = [bool]($ModelBootstrapState -and $ModelBootstrapState.modelBootstrap.bootstrapReady)
         port = $runtimePort
         llamaServerExe = $llamaServerExe
         turboServerExe = $turboServerExe
@@ -484,6 +763,7 @@ function Update-ServiceLifecycle {
 function Write-InstallSummary {
     param(
         [hashtable]$Components,
+        [object]$SelectedModelSelection,
         [pscustomobject]$ControlCenterStart,
         [Nullable[int]]$RuntimePort,
         [string[]]$FailedCore
@@ -506,6 +786,16 @@ function Write-InstallSummary {
     $lines = @(
         "Edition: $Edition",
         "Access mode: $AccessMode",
+        "Guided model selection: $($SelectedModelSelection.label) [$($SelectedModelSelection.modelId)]",
+        "Model bootstrap: $($Components.modelBootstrap.status)",
+        "Bootstrap ready: $($Components.modelBootstrap.bootstrapReady)",
+        "Selected model downloaded: $($Components.modelBootstrap.selectedModelDownloaded)",
+        "First-run probe: $($Components.firstRunProbe.status)",
+        "Probe ready: $($Components.firstRunProbe.probeReady)",
+        "Probe prompt: $($Components.firstRunProbe.probePrompt)",
+        "Model VRAM class: $($SelectedModelSelection.vramClass)",
+        "Catalog defaultModelId: $($SelectedModelSelection.defaultModelId)",
+        "Prikazi jos modela: $($SelectedModelSelection.showMoreModelsAfterInstall)",
         "Control Center: $(if ($Components.controlCenter.ok) { 'OK' } else { 'FAILED' })",
         "llama.cpp: $(if ($Components.llamaCppRuntime.ok) { 'OK' } else { 'FAILED' })",
         "OpenCode: $(if ($Components.openCode.ok) { 'OK' } else { 'FAILED' })",
@@ -543,6 +833,12 @@ if (Test-Path $installLogPath) {
     Remove-Item $installLogPath -Force
 }
 Write-InstallLogLine "Installer start: edition=$Edition accessMode=$AccessMode profile=$Profile"
+$selectedModelSelection = Resolve-SelectedModelSelection `
+    -RequestedModelId $SelectedModelId `
+    -RequestedLabel $SelectedModelLabel `
+    -RequestedDownloadFile $SelectedModelDownloadFile `
+    -RequestedVramClass $SelectedModelVramClass
+Write-InstallLogLine "Guided model selection: id=$($selectedModelSelection.modelId) source=$($selectedModelSelection.source) showMoreModels=$($selectedModelSelection.showMoreModelsAfterInstall)"
 
 if (-not $SkipDependencies) {
     Write-InstallLogLine "Dependency bootstrap started."
@@ -580,6 +876,8 @@ $llamaReady = Ensure-LlamaCpp
 $turboInfo = Ensure-TurboQuant
 $turboServerPath = if ($turboInfo.status -eq "present") { Join-Path $appsDir "llama.cpp-turboquant\build-cuda\bin\llama-server.exe" } else { "" }
 Write-InstallLogLine "Component check finished: OpenCode=$opencodeReady llamaReady=$llamaReady TurboQuant=$($turboInfo.status)"
+$modelBootstrapState = Invoke-ModelBootstrap -SelectedModelSelection $selectedModelSelection
+Write-InstallLogLine "Model bootstrap result: status=$($modelBootstrapState.modelBootstrap.status) selectedModelDownloaded=$($modelBootstrapState.selectedModelDownloaded)"
 
 $launchWrapper = Write-LaunchWrapper
 Write-Shortcut -ShortcutPath (Join-Path $desktopDir "Local AI Control Center.lnk") -TargetPath $launchWrapper
@@ -590,14 +888,16 @@ if ($opencodeReady -and (Resolve-OpenCodePath)) {
 $llamaPath = Join-Path $appsDir "llama.cpp\build\bin\llama-server.exe"
 Write-JsonFile -Path $runtimeConfigPath -Payload @{ accessMode = $AccessMode }
 Write-InstallLogLine "Wrote runtime-config.json"
-Update-InstallStateAndSettings -LlamaReady $llamaReady -LlamaPath $llamaPath -TurboServerPath $turboServerPath
+Update-InstallStateAndSettings -LlamaReady $llamaReady -LlamaPath $llamaPath -TurboServerPath $turboServerPath -SelectedModelSelection $selectedModelSelection -ModelBootstrapState $modelBootstrapState
 $healthyRuntimePort = Start-LegacyRuntimeIfNeeded
 Write-InstallLogLine "Legacy runtime probe result: port=$healthyRuntimePort"
-Update-InstallStateAndSettings -LlamaReady $llamaReady -LlamaPath $llamaPath -TurboServerPath $turboServerPath
+Update-InstallStateAndSettings -LlamaReady $llamaReady -LlamaPath $llamaPath -TurboServerPath $turboServerPath -SelectedModelSelection $selectedModelSelection -ModelBootstrapState $modelBootstrapState
 $healthyRuntimePort = Find-HealthyRuntimePort
 Update-ServiceLifecycle -HealthyPort $healthyRuntimePort
 $controlCenterStart = Start-ControlCenterAndWait -LaunchWrapper $launchWrapper
 Write-InstallLogLine "Control Center start result: started=$($controlCenterStart.Started) url=$($controlCenterStart.Url)"
+$firstRunProbeState = Invoke-FirstRunProbe -HealthyRuntimePort $healthyRuntimePort -ModelBootstrapState $modelBootstrapState
+Write-InstallLogLine "First-run probe result: status=$($firstRunProbeState.firstRunProbe.status) probeReady=$($firstRunProbeState.firstRunProbe.probeReady)"
 $installState = Read-JsonFile $installStatePath
 $effectiveLlamaPath = if ($installState -and $installState.llamaServerExe) { [string]$installState.llamaServerExe } else { $llamaPath }
 $effectiveTurboPath = if ($installState -and $installState.turboServerExe) { [string]$installState.turboServerExe } else { $turboServerPath }
@@ -609,11 +909,20 @@ $components = [ordered]@{
     llamaCppRuntime = @{ ok = $llamaComponentReady; path = $effectiveLlamaPath }
     openCode = @{ ok = $opencodeReady; path = if ($opencodeReady) { (Resolve-OpenCodePath) } else { "" } }
     turboQuantRuntime = @{ ok = ($turboInfo.status -eq "present"); path = $effectiveTurboPath; status = $turboInfo.status }
+    modelBootstrap = $modelBootstrapState.modelBootstrap
+    firstRunProbe = [ordered]@{
+        status = $firstRunProbeState.firstRunProbe.status
+        message = $firstRunProbeState.firstRunProbe.message
+        probeReady = [bool]$firstRunProbeState.firstRunProbe.probeReady
+        probePrompt = [string]$firstRunProbeState.probePrompt
+        probeResponse = [string]$firstRunProbeState.probeResponse
+    }
 }
 Write-JsonFile -Path $installReportPath -Payload @{
     installRoot = $workspaceRoot
     appRoot = $appRoot
     edition = $Edition
+    selectedModel = $selectedModelSelection
     launchWrapper = $launchWrapper
     localUrl = $controlCenterStart.Url
     controlCenterStarted = $controlCenterStart.Started
@@ -626,7 +935,9 @@ if (-not $controlCenterStart.Started) { $failedCore += "Control Center startup" 
 if (-not $components.llamaCppRuntime.ok) { $failedCore += "llama.cpp" }
 if (-not $healthyRuntimePort) { $failedCore += "runtime health" }
 if (-not $components.openCode.ok) { $failedCore += "OpenCode" }
-Write-InstallSummary -Components $components -ControlCenterStart $controlCenterStart -RuntimePort $healthyRuntimePort -FailedCore $failedCore
+if (-not $components.modelBootstrap.bootstrapReady) { $failedCore += "model bootstrap" }
+if (-not $components.firstRunProbe.probeReady) { $failedCore += "first-run probe" }
+Write-InstallSummary -Components $components -SelectedModelSelection $selectedModelSelection -ControlCenterStart $controlCenterStart -RuntimePort $healthyRuntimePort -FailedCore $failedCore
 Write-InstallLogLine "Install summary written."
 
 Write-Host "Install report:" -ForegroundColor Cyan

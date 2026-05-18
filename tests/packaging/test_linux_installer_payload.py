@@ -18,6 +18,29 @@ class LinuxInstallerPayloadTests(unittest.TestCase):
         self.assertIn("TurboQuant", content)
         self.assertIn("arm64", content)
         self.assertIn("tailscale", content)
+        self.assertIn("recommended-models.json", content)
+        self.assertIn("defaultModelId", content)
+        self.assertIn("MODEL_ID", content)
+        self.assertIn("Prikazi jos modela", content)
+        self.assertIn("gemma-4-e4b-it-q4-0", content)
+        self.assertIn("qwen3.6-35b-a3b-ud-iq2-xxs", content)
+        self.assertIn("qwen3.6-35b-a3b-mtp-ud-q4-k-xl", content)
+        self.assertNotIn("Preuzmi preporuceni model odmah?", content)
+        self.assertNotIn("bootstrap handoff", content.lower())
+        self.assertNotIn("bootstrap/download", content.lower())
+
+    def test_linux_tui_installer_mentions_guided_model_selection(self):
+        content = (ROOT / "install" / "linux" / "installer-tui.sh").read_text(encoding="utf-8")
+        self.assertIn("recommended-models.json", content)
+        self.assertIn("defaultModelId", content)
+        self.assertIn("MODEL_ID", content)
+        self.assertIn("Prikazi jos modela", content)
+        self.assertIn("gemma-4-e4b-it-q4-0", content)
+        self.assertIn("qwen3.6-35b-a3b-ud-iq2-xxs", content)
+        self.assertIn("qwen3.6-35b-a3b-mtp-ud-q4-k-xl", content)
+        self.assertNotIn("Download model now?", content)
+        self.assertNotIn("bootstrap handoff", content.lower())
+        self.assertNotIn("bootstrap/download", content.lower())
 
     def test_linux_installer_invokes_legacy_core_install_and_next_overlay(self):
         content = (ROOT / "install" / "linux" / "install.sh").read_text(encoding="utf-8")
@@ -36,6 +59,11 @@ class LinuxInstallerPayloadTests(unittest.TestCase):
         self.assertIn('"workingDirectory": str(existing_settings.get("opencode", {}).get("workingDirectory", opencode_workspace) or opencode_workspace)', content)
         self.assertIn('"threads": int(existing_settings.get("threads", 8) or 8)', content)
         self.assertIn('"installRoot": str(workspace_root)', content)
+        self.assertIn('SELECTED_MODEL_ID="${SELECTED_MODEL_ID:-}"', content)
+        self.assertIn('SELECTED_MODEL_FILE="${SELECTED_MODEL_FILE:-}"', content)
+        self.assertIn('"selectedModelId"', content)
+        self.assertIn('"selectedModelFile"', content)
+        self.assertIn("normalize_shell_scripts", content)
         self.assertIn('find "$APP_ROOT/launchers" "$APP_ROOT/install" "$BIN_DIR" -type f -name "*.sh" -exec chmod +x {} +', content)
         self.assertIn('if [ -x "$target/build/bin/llama-server" ]; then', content)
         self.assertIn('if [ "$SKIP_LLAMA_SETUP" = "1" ]; then', content)
@@ -51,6 +79,7 @@ class LinuxInstallerPayloadTests(unittest.TestCase):
         content = (ROOT / "packaging" / "linux" / "build-run-installer.sh").read_text(encoding="utf-8")
         self.assertIn('"$payload_dir/legacy-launchers"', content)
         self.assertIn('cp -R "$SUPPORT_REPO/launchers/." "$payload_dir/legacy-launchers/"', content)
+        self.assertIn('replace(b"\\r\\n", b"\\n")', content)
 
 
 if __name__ == "__main__":

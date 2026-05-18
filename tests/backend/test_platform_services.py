@@ -45,7 +45,12 @@ class PlatformServicesTests(unittest.TestCase):
         ):
             result = repair_service.run_repair_install()
 
-        self.assertEqual(result, windows_payload)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["action"], "repair-install.ps1")
+        self.assertEqual(result["repairKind"], "install")
+        self.assertEqual(result["title"], "Popravka instalacije")
+        self.assertEqual(result["summary"], "Popravka instalacije je zavrsena.")
+        self.assertTrue(result["safeForNonTechnicalUsers"])
         runner.assert_called_once_with(
             "repair-install.sh", "repair-install.ps1"
         )
