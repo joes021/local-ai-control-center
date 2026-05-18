@@ -200,6 +200,9 @@ foreach ($file in @("run_control_center_next.py", "README.md", "version.json", "
     $source = Join-Path $payloadRoot $file
     if (Test-Path $source) {
         Copy-Item $source (Join-Path $appRoot $file) -Force
+        if ($file -in @("version.json", "release-notes.txt")) {
+            Copy-Item $source (Join-Path $workspaceRoot $file) -Force
+        }
     }
 }
 

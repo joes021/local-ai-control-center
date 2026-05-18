@@ -184,7 +184,9 @@ copy_dir_content "$PAYLOAD_ROOT/assets" "$APP_ROOT/assets"
 copy_if_exists "$PAYLOAD_ROOT/run_control_center_next.py" "$APP_ROOT/run_control_center_next.py"
 copy_if_exists "$PAYLOAD_ROOT/README.md" "$APP_ROOT/README.md"
 copy_if_exists "$PAYLOAD_ROOT/version.json" "$APP_ROOT/version.json"
+copy_if_exists "$PAYLOAD_ROOT/version.json" "$WORKSPACE_ROOT/version.json"
 copy_if_exists "$PAYLOAD_ROOT/release-notes.txt" "$APP_ROOT/release-notes.txt"
+copy_if_exists "$PAYLOAD_ROOT/release-notes.txt" "$WORKSPACE_ROOT/release-notes.txt"
 
 if ensure_opencode; then
   OPENCODE_OK=true

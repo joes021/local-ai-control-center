@@ -1,3 +1,7 @@
+v2.22.1
+- Fixed installer root version propagation so installed workspaces and live api/status report the new release correctly.
+- Copied release notes to the workspace root alongside version metadata during install.
+
 v2.22.0
 - Added real wizard-style installer flow for Windows, Ubuntu x86_64, and Ubuntu arm64.
 - Installers now expose edition choice, access mode, and optional runtime component choices.
