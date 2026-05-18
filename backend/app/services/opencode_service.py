@@ -172,15 +172,12 @@ def apply_opencode_settings(payload: dict[str, object]) -> dict[str, object]:
 
 def open_opencode(profile: str = "") -> dict[str, object]:
     if get_target_platform() != "windows":
-        executable_path = _resolve_linux_opencode_executable()
-        if not executable_path:
-            return _result("error", "open-opencode", "OpenCode executable nije pronadjen na Linuxu.")
-        settings = load_settings_payload()
-        working_directory = str(settings.get("workingDirectory", "") or Path.home())
+        launcher_script = _resolve_linux_opencode_launcher_script()
+        if not launcher_script:
+            return _result("error", "open-opencode", "OpenCode launcher nije pronadjen na Linuxu.")
         try:
             subprocess.Popen(  # noqa: S603
-                [executable_path],
-                cwd=working_directory if Path(working_directory).is_dir() else None,
+                ["bash", launcher_script, profile or ""],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
@@ -193,7 +190,7 @@ def open_opencode(profile: str = "") -> dict[str, object]:
             "summary": "OpenCode je pokrenut.",
             "details": {
                 "returncode": 0,
-                "stdout": executable_path,
+                "stdout": launcher_script,
                 "stderr": "",
             },
         }
@@ -238,6 +235,19 @@ def _resolve_linux_opencode_executable() -> str:
         resolved = shutil.which(candidate)
         if resolved:
             return resolved
+    return ""
+
+
+def _resolve_linux_opencode_launcher_script() -> str:
+    home = detect_local_qwen_home()
+    candidates = [
+        home / "launchers" / "start-opencode.sh",
+        home / "control-center-next" / "install" / "linux" / "start-opencode.sh",
+        detect_local_qwen_repo_fallback() / "launcher" / "linux" / "start-opencode.sh",
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
     return ""
 
 

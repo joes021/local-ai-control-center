@@ -167,20 +167,21 @@ class OpenCodeServiceTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["action"], "open-opencode")
 
-    def test_open_opencode_on_linux_uses_detected_executable(self):
+    def test_open_opencode_on_linux_uses_launcher_script(self):
         from backend.app.services import opencode_service
 
         with (
             mock.patch.dict("os.environ", {"CONTROL_CENTER_NEXT_TARGET_PLATFORM": "linux"}, clear=False),
-            mock.patch.object(opencode_service, "_resolve_linux_opencode_executable", return_value="/usr/local/bin/opencode"),
-            mock.patch.object(opencode_service, "load_settings_payload", return_value={"workingDirectory": "/repo"}),
+            mock.patch.object(opencode_service, "_resolve_linux_opencode_launcher_script", return_value="/repo/launchers/start-opencode.sh"),
             mock.patch.object(opencode_service.subprocess, "Popen") as popen_mock,
         ):
             result = opencode_service.open_opencode("balanced")
 
         self.assertEqual(result["status"], "ok")
         command = popen_mock.call_args.args[0]
-        self.assertEqual(command[0], "/usr/local/bin/opencode")
+        self.assertEqual(command[0], "bash")
+        self.assertEqual(command[1], "/repo/launchers/start-opencode.sh")
+        self.assertEqual(command[2], "balanced")
 
 
 if __name__ == "__main__":

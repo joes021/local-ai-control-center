@@ -20,6 +20,10 @@ class InstallerFirstRunReadinessTests(unittest.TestCase):
         self.assertIn("bootstrapReady", content)
         self.assertIn("selectedModelDownloaded", content)
         self.assertIn("model bootstrap", content.lower())
+        self.assertIn("download_selected_model_direct", content)
+        self.assertIn("huggingface_hub", content)
+        self.assertIn('repo = str(entry.get("repo"', content)
+        self.assertIn('filename = str(entry.get("downloadFile"', content)
 
     def test_models_service_exposes_installer_bootstrap_readiness_helper(self):
         from backend.app.services import models_service

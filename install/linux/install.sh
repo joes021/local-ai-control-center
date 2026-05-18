@@ -221,6 +221,105 @@ json_quote() {
   python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"
 }
 
+ensure_model_download_python() {
+  local python_bin="$STATE_DIR/model-download-venv/bin/python"
+  if [ ! -x "$python_bin" ]; then
+    python3 -m venv "$STATE_DIR/model-download-venv"
+  fi
+  "$python_bin" -m pip install -U pip >/dev/null
+  "$python_bin" -m pip install -U huggingface_hub >/dev/null
+  printf '%s\n' "$python_bin"
+}
+
+get_recommended_model_entry_json() {
+  local selected_model_id="$1"
+  python3 - <<'PY' "$RECOMMENDED_MODELS_PATH" "$selected_model_id"
+import json
+import sys
+from pathlib import Path
+
+catalog_path, selected_model_id = sys.argv[1:3]
+payload = json.loads(Path(catalog_path).read_text(encoding="utf-8"))
+for entry in payload.get("recommended", []) or []:
+    if str(entry.get("modelId", "") or "").strip() == selected_model_id.strip():
+        print(json.dumps(entry, ensure_ascii=False))
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+download_selected_model_direct() {
+  local selected_model_id="$1"
+  local selected_model_file="$2"
+  local download_python entry_json
+
+  if [ -z "$selected_model_id" ] || [ -z "$selected_model_file" ]; then
+    return 1
+  fi
+
+  entry_json="$(get_recommended_model_entry_json "$selected_model_id")" || return 1
+  download_python="$(ensure_model_download_python)"
+
+  "$download_python" - <<'PY' "$entry_json" "$WORKSPACE_ROOT/models"
+import contextlib
+import io
+import json
+import warnings
+import sys
+from pathlib import Path
+
+entry = json.loads(sys.argv[1])
+models_dir = Path(sys.argv[2])
+models_dir.mkdir(parents=True, exist_ok=True)
+
+repo = str(entry.get("repo", "") or "").strip()
+filename = str(entry.get("downloadFile", "") or "").strip()
+min_expected = int(entry.get("minExpectedBytes", 0) or 0)
+target_path = models_dir / filename
+if not repo or not filename:
+    raise SystemExit("Selected model nema validan repo/filename za bootstrap download.")
+
+if target_path.is_file():
+    current_size = target_path.stat().st_size
+    if min_expected <= 0 or current_size >= min_expected:
+        print(f"Model je vec prisutan: {target_path}")
+        raise SystemExit(0)
+
+warnings.filterwarnings(
+    "ignore",
+    message=r".*local_dir_use_symlinks.*deprecated.*",
+    category=UserWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r".*You are sending unauthenticated requests to the HF Hub.*",
+    category=UserWarning,
+)
+
+try:
+    from huggingface_hub import hf_hub_download
+except Exception:
+    raise SystemExit("huggingface_hub nije dostupan za model bootstrap.")
+
+print(f"Preuzimam {filename} sa {repo} ...")
+with contextlib.redirect_stderr(io.StringIO()):
+    hf_hub_download(
+        repo_id=repo,
+        filename=filename,
+        local_dir=str(models_dir),
+    )
+
+if not target_path.is_file():
+    raise SystemExit(f"Download nije proizveo fajl: {target_path}")
+
+final_size = target_path.stat().st_size
+if min_expected > 0 and final_size < min_expected:
+    raise SystemExit(f"Model je skinut nepotpuno: {target_path}")
+
+print(f"Model bootstrap download je zavrsen: {target_path}")
+PY
+}
+
 build_model_bootstrap_state() {
   local selected_model_id="$1"
   local selected_model_file="$2"
@@ -308,16 +407,7 @@ PY
     return 0
   fi
 
-  local manage_models_script="$LEGACY_LAUNCHERS_DIR/manage-models.sh"
-  if [ ! -x "$manage_models_script" ]; then
-    manage_models_script="$APP_ROOT/install/linux/manage-models.sh"
-  fi
-  if [ ! -x "$manage_models_script" ]; then
-    build_model_bootstrap_state "$selected_model_id" "$selected_model_file" "$installed_model_file" "download-script-missing"
-    return 0
-  fi
-
-  if bash "$manage_models_script" download "$selected_model_id" >/dev/null 2>&1; then
+  if download_selected_model_direct "$selected_model_id" "$selected_model_file" >/dev/null 2>&1; then
     build_model_bootstrap_state "$selected_model_id" "$selected_model_file" "$WORKSPACE_ROOT/models/$selected_model_file" "downloaded"
     return 0
   fi
