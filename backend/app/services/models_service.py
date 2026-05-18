@@ -171,17 +171,20 @@ def load_models_payload() -> dict[str, list[dict[str, object]]]:
     for raw in custom_registry.get("models") or []:
         if not isinstance(raw, dict):
             continue
-        custom_source = str(raw.get("customSource", "") or "").lower()
-        if custom_source == "huggingface":
-            source = "huggingface"
-        elif custom_source == "unsloth":
-            source = "unsloth"
-        else:
-            source = "local"
+        source = _normalize_model_source(str(raw.get("customSource", "") or ""))
         built = _build_model_entry(raw, source, active_model_id, models_dir)
         entries = [item for item in entries if str(item.get("id")) != str(built["id"])]
         entries.append(built)
         seen_ids.add(str(built["id"]))
+
+    discovered = _build_detected_active_model_entry(
+        install_state=install_state,
+        models_dir=models_dir,
+        active_model_id=active_model_id,
+        seen_ids=seen_ids,
+    )
+    if discovered is not None:
+        entries.append(discovered)
 
     return normalize_models(entries)
 
@@ -596,6 +599,68 @@ def _build_model_entry(
         "freeDiskGiB": free_disk_gib,
         "hasEnoughDisk": has_enough_disk,
     }
+
+
+def _normalize_model_source(value: str) -> str:
+    lowered = str(value or "").strip().lower()
+    if lowered in {"huggingface", "hugging-face", "hf"}:
+        return "huggingface"
+    if lowered == "unsloth":
+        return "unsloth"
+    return "local"
+
+
+def _build_detected_active_model_entry(
+    *,
+    install_state: dict[str, object],
+    models_dir: Path,
+    active_model_id: str,
+    seen_ids: set[str],
+) -> dict[str, object] | None:
+    model_file = str(install_state.get("modelFile", "") or "").strip()
+    if not model_file:
+        return None
+
+    target_path = Path(model_file)
+    if not target_path.is_file():
+        candidate = models_dir / Path(model_file).name
+        if candidate.is_file():
+            target_path = candidate
+    if not target_path.is_file():
+        return None
+
+    filename = target_path.name
+    discovered_id = active_model_id or filename
+    if discovered_id in seen_ids or filename in seen_ids:
+        return None
+
+    return _build_model_entry(
+        {
+            "id": discovered_id,
+            "label": filename,
+            "filename": filename,
+            "family": _infer_model_family(filename),
+            "description": "Detektovan iz aktivnog lokalnog runtime/install-state stanja.",
+        },
+        "local",
+        active_model_id or discovered_id,
+        models_dir,
+    )
+
+
+def _infer_model_family(filename: str) -> str:
+    lowered = filename.lower()
+    if "qwen" in lowered:
+        return "Qwen"
+    if "gemma" in lowered:
+        return "Gemma"
+    if "mistral" in lowered:
+        return "Mistral"
+    if "deepseek" in lowered:
+        return "DeepSeek"
+    if "llama" in lowered:
+        return "Llama"
+    return "Detected"
 
 
 def _classify_mtp_status(*, source: str, model_id: str, filename: str, raw: dict[str, object]) -> str:

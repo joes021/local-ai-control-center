@@ -108,6 +108,31 @@ class BrowserRouteTests(unittest.TestCase):
         add_service.assert_called_once()
         download_service.assert_called_once_with("unsloth-demo.gguf")
 
+    def test_resolve_local_model_id_falls_back_to_filename_match_when_source_differs(self):
+        from backend.app.routes.browser import _resolve_local_model_id
+
+        payload = {
+            "local": [
+                {
+                    "id": "detected-active-model",
+                    "filename": "Qwen3.6-35B-A3B-UD-IQ2_XXS.gguf",
+                    "source": "local",
+                    "repo": "",
+                }
+            ],
+            "huggingFace": [],
+            "unsloth": [],
+            "curated": [],
+        }
+        with patch("backend.app.routes.browser.load_models_payload", return_value=payload):
+            resolved = _resolve_local_model_id(
+                "unsloth",
+                "unsloth/Qwen3.6-35B-A3B-GGUF",
+                "Qwen3.6-35B-A3B-UD-IQ2_XXS.gguf",
+            )
+
+        self.assertEqual(resolved, "detected-active-model")
+
 
 if __name__ == "__main__":
     unittest.main()

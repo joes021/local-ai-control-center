@@ -1,3 +1,4 @@
+import json
 import unittest
 import uuid
 from pathlib import Path
@@ -251,6 +252,45 @@ class ModelsServiceTests(unittest.TestCase):
 
         self.assertEqual(payload["status"], "idle")
         self.assertFalse(payload["isActive"])
+
+    def test_load_models_payload_includes_detected_active_model_from_install_state(self):
+        from backend.app.services import models_service
+
+        with TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            models_dir = home / "models"
+            state_dir = home / "state"
+            profiles_dir = home / "config" / "profiles"
+            models_dir.mkdir(parents=True)
+            state_dir.mkdir(parents=True)
+            profiles_dir.mkdir(parents=True)
+
+            active_file = models_dir / "Qwen3.6-35B-A3B-UD-IQ2_XXS.gguf"
+            active_file.write_bytes(b"demo")
+            (profiles_dir / "defaults.json").write_text('{"modelChoices":{}}', encoding="utf-8")
+            (state_dir / "custom-models.json").write_text('{"models":[]}', encoding="utf-8")
+            (state_dir / "install-state.json").write_text(
+                json.dumps(
+                    {
+                        "modelId": "qwen-active-demo",
+                        "modelFile": str(active_file),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(models_service, "detect_local_qwen_home", return_value=home):
+                payload = models_service.load_models_payload()
+
+        self.assertEqual(len(payload["local"]), 1)
+        detected = payload["local"][0]
+        self.assertEqual(detected["id"], "qwen-active-demo")
+        self.assertTrue(detected["active"])
+        self.assertTrue(detected["installed"])
+        self.assertEqual(detected["filename"], "Qwen3.6-35B-A3B-UD-IQ2_XXS.gguf")
+        self.assertEqual(detected["family"], "Qwen")
 
     def test_complete_model_action_updates_registry(self):
         from backend.app.services import models_service

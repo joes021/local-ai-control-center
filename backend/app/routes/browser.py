@@ -39,7 +39,7 @@ def add_catalog_model(*, source: str, repo_id: str, filename: str, label: str, f
         result = add_unsloth_model(repo_id, filename, label, family or "Unsloth")
     else:
         result = add_hf_model(repo_id, filename, label, family or "Custom")
-    local_model_id = _resolve_local_model_id(normalized_source, filename)
+    local_model_id = _resolve_local_model_id(normalized_source, repo_id, filename)
     if local_model_id:
         result["localModelId"] = local_model_id
     result.setdefault("promptDownload", True)
@@ -94,15 +94,25 @@ def browser_download(payload: DownloadCatalogModelRequest) -> dict[str, object]:
     return download_model(local_model_id)
 
 
-def _resolve_local_model_id(source: str, filename: str) -> str:
+def _resolve_local_model_id(source: str, repo_id: str, filename: str) -> str:
     payload = load_models_payload()
+    normalized_repo = str(repo_id or "").strip().lower()
+    filename = str(filename or "")
+
+    fallback_by_filename = ""
     for group_name in ("local", "huggingFace", "unsloth", "curated"):
         for item in payload.get(group_name, []):
             if not isinstance(item, dict):
                 continue
-            if str(item.get("filename", "") or "") != filename:
+            item_filename = str(item.get("filename", "") or "")
+            if item_filename != filename:
                 continue
             item_source = str(item.get("source", "") or "").lower()
+            item_repo = str(item.get("repo", "") or item.get("repoId", "") or "").strip().lower()
+            if normalized_repo and item_repo == normalized_repo:
+                return str(item.get("id", "") or "")
             if item_source == source:
                 return str(item.get("id", "") or "")
-    return ""
+            if not fallback_by_filename:
+                fallback_by_filename = str(item.get("id", "") or "")
+    return fallback_by_filename
