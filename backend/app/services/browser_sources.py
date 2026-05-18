@@ -1,0 +1,232 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+import json
+import re
+from urllib import parse as urllib_parse
+from urllib import request as urllib_request
+from urllib import error as urllib_error
+
+
+HF_API = "https://huggingface.co/api/models"
+
+
+@dataclass
+class SourceFetchResult:
+    models: list[dict[str, object]]
+    errors: list[str]
+    warnings: list[str]
+
+
+def fetch_source_catalog(source: str) -> dict[str, object]:
+    normalized = (source or "all").strip().lower()
+    if normalized == "all":
+        hf = fetch_huggingface_catalog()
+        unsloth = fetch_unsloth_catalog()
+        return {
+            "models": hf.models + unsloth.models,
+            "errors": hf.errors + unsloth.errors,
+            "warnings": hf.warnings + unsloth.warnings,
+        }
+    if normalized == "huggingface":
+        result = fetch_huggingface_catalog()
+        return {"models": result.models, "errors": result.errors, "warnings": result.warnings}
+    if normalized == "unsloth":
+        result = fetch_unsloth_catalog()
+        return {"models": result.models, "errors": result.errors, "warnings": result.warnings}
+    return {"models": [], "errors": [f"Nepoznat source za refresh: {source}"], "warnings": []}
+
+
+def fetch_huggingface_catalog(limit: int = 24) -> SourceFetchResult:
+    return _fetch_hf_models(
+        {
+            "search": "GGUF",
+            "limit": str(limit),
+            "sort": "lastModified",
+            "direction": "-1",
+            "full": "true",
+            "config": "false",
+        },
+        source="huggingface",
+    )
+
+
+def fetch_unsloth_catalog(limit: int = 24) -> SourceFetchResult:
+    return _fetch_hf_models(
+        {
+            "author": "unsloth",
+            "search": "GGUF",
+            "limit": str(limit),
+            "sort": "lastModified",
+            "direction": "-1",
+            "full": "true",
+            "config": "false",
+        },
+        source="unsloth",
+    )
+
+
+def _fetch_hf_models(query: dict[str, str], *, source: str) -> SourceFetchResult:
+    url = f"{HF_API}?{urllib_parse.urlencode(query)}"
+    try:
+        payload = _read_json(url)
+    except Exception as exc:  # noqa: BLE001
+        return SourceFetchResult(models=[], errors=[f"{source}: {exc}"], warnings=[])
+
+    models: list[dict[str, object]] = []
+    warnings: list[str] = []
+    if not isinstance(payload, list):
+        return SourceFetchResult(models=[], errors=[f"{source}: neocekivan API odgovor"], warnings=[])
+
+    for repo in payload:
+        if not isinstance(repo, dict):
+            continue
+        repo_id = str(repo.get("id", "") or "")
+        siblings = repo.get("siblings") or []
+        if not repo_id or not isinstance(siblings, list):
+            continue
+        gguf_files = [
+            sibling for sibling in siblings
+            if isinstance(sibling, dict) and str(sibling.get("rfilename", "") or "").lower().endswith(".gguf")
+        ]
+        if not gguf_files:
+            continue
+        if len(gguf_files) > 16:
+            warnings.append(f"{repo_id}: prikazan je samo prvih 16 GGUF fajlova.")
+            gguf_files = gguf_files[:16]
+        for sibling in gguf_files:
+            filename = str(sibling.get("rfilename", "") or "")
+            models.append(
+                _normalize_model_entry(
+                    source=source,
+                    repo_id=repo_id,
+                    repo=repo,
+                    sibling=sibling,
+                    filename=filename,
+                )
+            )
+    return SourceFetchResult(models=models, errors=[], warnings=warnings)
+
+
+def _normalize_model_entry(
+    *,
+    source: str,
+    repo_id: str,
+    repo: dict[str, object],
+    sibling: dict[str, object],
+    filename: str,
+) -> dict[str, object]:
+    quantization = _extract_quantization(filename)
+    approx_size_gib = _to_gib(sibling.get("size"))
+    family = _guess_family(repo_id, filename)
+    mtp_status = "has-mtp" if _has_mtp(repo_id, filename) else ("no-mtp" if source == "unsloth" else "unknown")
+    context_window = _guess_context_window(repo_id, filename)
+    default_output = 4096 if "35b" in repo_id.lower() or "27b" in repo_id.lower() else 2048
+    moe = "a3b" in repo_id.lower() or "moe" in repo_id.lower()
+    turboquant_ready = quantization.startswith(("IQ", "Q2", "Q3", "Q4"))
+    model_id = f"{source}/{repo_id}/{filename}"
+    published_at = str(repo.get("createdAt", "") or "")
+    updated_at = str(repo.get("lastModified", "") or "")
+    return {
+        "id": model_id,
+        "label": filename,
+        "family": family,
+        "source": source,
+        "repoId": repo_id,
+        "filename": filename,
+        "quantization": quantization,
+        "approxSizeGiB": approx_size_gib,
+        "publishedAt": published_at,
+        "lastUpdated": updated_at,
+        "mtpStatus": mtp_status,
+        "mtpStatusLabel": _mtp_label(mtp_status),
+        "sourceUrl": f"https://huggingface.co/{repo_id}",
+        "description": str(repo.get("description", "") or ""),
+        "minimumRamGiB": _guess_min_ram(approx_size_gib, moe=moe),
+        "minimumVramGiB": _guess_min_vram(approx_size_gib, turboquant_ready=turboquant_ready),
+        "recommendedVramGiB": _guess_recommended_vram(approx_size_gib, turboquant_ready=turboquant_ready),
+        "contextWindow": context_window,
+        "defaultOutputTokens": default_output,
+        "moe": moe,
+        "turboQuantReady": turboquant_ready,
+        "fit": {"status": "nije provereno"},
+    }
+
+
+def _read_json(url: str) -> object:
+    request = urllib_request.Request(url, headers={"User-Agent": "LocalAIControlCenter/2"})
+    with urllib_request.urlopen(request, timeout=20) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _extract_quantization(filename: str) -> str:
+    matches = re.findall(r"(UD-[A-Z0-9_]+|IQ[0-9A-Z_]+|Q[2-9]_[A-Z0-9_]+|Q[2-9][A-Z0-9_]+)", filename, re.IGNORECASE)
+    if not matches:
+        return "unknown"
+    return matches[-1].upper()
+
+
+def _guess_family(repo_id: str, filename: str) -> str:
+    lowered = f"{repo_id} {filename}".lower()
+    if "qwen" in lowered:
+        return "Qwen"
+    if "gemma" in lowered:
+        return "Gemma"
+    if "llama" in lowered:
+        return "Llama"
+    if "mistral" in lowered:
+        return "Mistral"
+    return repo_id.split("/", 1)[0] if "/" in repo_id else repo_id
+
+
+def _has_mtp(repo_id: str, filename: str) -> bool:
+    lowered = f"{repo_id} {filename}".lower()
+    return "mtp" in lowered
+
+
+def _guess_context_window(repo_id: str, filename: str) -> int:
+    lowered = f"{repo_id} {filename}".lower()
+    if "qwen3.6" in lowered:
+        return 262144
+    if "qwen3" in lowered:
+        return 131072
+    return 32768
+
+
+def _guess_min_ram(size_gib: float | None, *, moe: bool) -> int | None:
+    if size_gib is None:
+        return None
+    base = max(8, int(round(size_gib * 1.4)))
+    return base + (4 if moe else 0)
+
+
+def _guess_min_vram(size_gib: float | None, *, turboquant_ready: bool) -> int | None:
+    if size_gib is None:
+        return None
+    multiplier = 0.8 if turboquant_ready else 1.0
+    return max(4, int(round(size_gib * multiplier)))
+
+
+def _guess_recommended_vram(size_gib: float | None, *, turboquant_ready: bool) -> int | None:
+    if size_gib is None:
+        return None
+    multiplier = 1.0 if turboquant_ready else 1.2
+    return max(6, int(round(size_gib * multiplier)))
+
+
+def _to_gib(size_bytes: object) -> float | None:
+    try:
+        if size_bytes in (None, ""):
+            return None
+        return round(float(size_bytes) / (1024 ** 3), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def _mtp_label(status: str) -> str:
+    return {
+        "no-mtp": "bez MTP",
+        "has-mtp": "ima MTP",
+        "unknown": "nepoznato",
+    }.get(status, "nepoznato")

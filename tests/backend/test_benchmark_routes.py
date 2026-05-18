@@ -10,9 +10,11 @@ class BenchmarkRouteTests(unittest.TestCase):
         expected = {
             "historyCount": 2,
             "current": {"label": "opencode"},
+            "liveCurrent": {"label": "opencode-live"},
             "averages": {"totalTokensPerSecond": 27.5},
             "activity": {"throughputTrend": {"direction": "up"}},
             "history": [],
+            "liveHistory": [],
         }
 
         with patch(

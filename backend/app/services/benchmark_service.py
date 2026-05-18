@@ -5,6 +5,8 @@ import threading
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.error import URLError
+from urllib.request import urlopen
 from uuid import uuid4
 
 from backend.app.services.local_qwen_paths import detect_local_qwen_home
@@ -14,6 +16,7 @@ from backend.app.services.script_runner import run_linux_launcher, run_windows_l
 
 
 _RUN_LOCK = threading.Lock()
+LIVE_SLOTS_TIMEOUT_SECONDS = 10
 
 
 DEFAULT_SCENARIOS = [
@@ -64,6 +67,18 @@ def _benchmark_run_state_path() -> Path:
 
 def _benchmark_history_runs_path() -> Path:
     return _state_dir() / "benchmark-history.json"
+
+
+def _live_slots_snapshot_path() -> Path:
+    return _state_dir() / "benchmark-live-slots.json"
+
+
+def _live_history_path() -> Path:
+    return _state_dir() / "benchmark-live-history.json"
+
+
+def _server_install_state_path() -> Path:
+    return _state_dir() / "install-state.json"
 
 
 def _latest_log_path() -> Path | None:
@@ -147,10 +162,20 @@ def _load_history() -> list[dict[str, object]]:
     return [item for item in payload if isinstance(item, dict)]
 
 
-def _average(history: list[dict[str, object]], key: str) -> float:
+def _average(history: list[dict[str, object]], key: str) -> float | None:
     if not history:
-        return 0.0
-    values = [float(item.get(key, 0.0) or 0.0) for item in history]
+        return None
+    values: list[float] = []
+    for item in history:
+        raw_value = item.get(key)
+        if raw_value is None:
+            continue
+        try:
+            values.append(float(raw_value))
+        except (TypeError, ValueError):
+            continue
+    if not values:
+        return None
     return round(sum(values) / len(values), 2)
 
 
@@ -205,6 +230,154 @@ def _chart_label(measured_at: str) -> str:
         return datetime.fromisoformat(normalized).strftime("%H:%M:%S")
     except Exception:
         return text[-8:] if len(text) >= 8 else text
+
+
+def _parse_iso_timestamp(value: object) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _load_runtime_server_port() -> int:
+    install_state = _read_json(_server_install_state_path(), {})
+    try:
+        port = int(install_state.get("port", 8091) or 8091)
+    except (TypeError, ValueError):
+        return 8091
+    return port if port > 0 else 8091
+
+
+def _load_live_history() -> list[dict[str, object]]:
+    payload = _read_json(_live_history_path(), [])
+    if not isinstance(payload, list):
+        return []
+    normalized: list[dict[str, object]] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        copy_item = dict(item)
+        if (
+            str(copy_item.get("label", "")) == "opencode-live"
+            and copy_item.get("promptTokensPerSecond") == 0.0
+            and int(copy_item.get("promptTokens", 0) or 0) == 0
+        ):
+            copy_item["promptTokensPerSecond"] = None
+        normalized.append(copy_item)
+    return normalized
+
+
+def _save_live_history(history: list[dict[str, object]]) -> None:
+    _write_json(_live_history_path(), history)
+
+
+def _record_live_history_sample(sample: dict[str, object] | None) -> list[dict[str, object]]:
+    history = _load_live_history()
+    if sample:
+        history.append(sample)
+    now = datetime.now(timezone.utc)
+    cutoff_seconds = 3600
+    normalized: list[dict[str, object]] = []
+    for item in history:
+        measured_at = _parse_iso_timestamp(item.get("measuredAt"))
+        if measured_at is None:
+            continue
+        if (now - measured_at).total_seconds() > cutoff_seconds:
+            continue
+        normalized.append(item)
+    normalized.sort(key=lambda item: str(item.get("measuredAt", "")))
+    deduped: list[dict[str, object]] = []
+    seen_signatures: set[str] = set()
+    for item in normalized:
+        signature = str(item.get("signature", "") or "")
+        if signature and signature in seen_signatures:
+            continue
+        if signature:
+            seen_signatures.add(signature)
+        deduped.append(item)
+    _save_live_history(deduped[-200:])
+    return deduped[-200:]
+
+
+def _load_live_slot_metric() -> dict[str, object] | None:
+    port = _load_runtime_server_port()
+
+    try:
+        with urlopen(f"http://127.0.0.1:{port}/slots", timeout=LIVE_SLOTS_TIMEOUT_SECONDS) as response:
+            payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    except (OSError, URLError, TimeoutError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(payload, list):
+        return None
+
+    current_slots: dict[str, int] = {}
+    for item in payload:
+        if not isinstance(item, dict) or not item.get("is_processing"):
+            continue
+        slot_id = str(item.get("id", ""))
+        task_id = str(item.get("id_task", ""))
+        next_tokens = item.get("next_token")
+        if not isinstance(next_tokens, list) or not next_tokens:
+            continue
+        first_token = next_tokens[0]
+        if not isinstance(first_token, dict):
+            continue
+        try:
+            decoded = int(first_token.get("n_decoded", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        current_slots[f"{slot_id}:{task_id}"] = decoded
+
+    now = datetime.now(timezone.utc)
+    snapshot = {
+        "measuredAt": now.isoformat(),
+        "slots": current_slots,
+    }
+    previous = _read_json(_live_slots_snapshot_path(), {"measuredAt": "", "slots": {}})
+    _write_json(_live_slots_snapshot_path(), snapshot)
+
+    if not current_slots:
+        return None
+
+    previous_slots = previous.get("slots") if isinstance(previous, dict) else {}
+    previous_measured_at = _parse_iso_timestamp(previous.get("measuredAt") if isinstance(previous, dict) else "")
+    if not isinstance(previous_slots, dict) or previous_measured_at is None:
+        return None
+
+    elapsed_seconds = (now - previous_measured_at).total_seconds()
+    if elapsed_seconds <= 0:
+        return None
+
+    delta_tokens = 0
+    for slot_key, decoded in current_slots.items():
+        previous_decoded = previous_slots.get(slot_key)
+        if not isinstance(previous_decoded, int):
+            continue
+        if decoded > previous_decoded:
+            delta_tokens += decoded - previous_decoded
+
+    if delta_tokens <= 0:
+        return None
+
+    throughput = round(delta_tokens / elapsed_seconds, 2)
+    return {
+        "measuredAt": snapshot["measuredAt"],
+        "label": "opencode-live",
+        "promptTokens": 0,
+        "completionTokens": delta_tokens,
+        "totalTokens": delta_tokens,
+        "promptMs": 0.0,
+        "completionMs": round(elapsed_seconds * 1000, 2),
+        "totalMs": round(elapsed_seconds * 1000, 2),
+        "promptTokensPerSecond": None,
+        "completionTokensPerSecond": throughput,
+        "totalTokensPerSecond": throughput,
+        "signature": f"opencode-live:{snapshot['measuredAt']}:{delta_tokens}",
+    }
 
 
 def _load_batteries() -> dict[str, object]:
@@ -564,22 +737,34 @@ def list_batteries() -> dict[str, object]:
 
 def load_benchmark_summary() -> dict[str, object]:
     history = _load_history()
-    current = history[-1] if history else None
-    recent_activities, source_counts = _build_recent_activities(history)
+    live_sample = _load_live_slot_metric()
+    live_history = _record_live_history_sample(live_sample)
+    signal_history = history + live_history
+    current = signal_history[-1] if signal_history else None
+    live_current = live_sample or (live_history[-1] if live_history else None)
+    recent_activities, source_counts = _build_recent_activities(signal_history)
     batteries_payload = _load_batteries()
     selected_battery = _selected_battery(batteries_payload)
     active_run = _load_run_state()
     saved_runs = _load_saved_runs()
 
     chart_history = []
-    for item in history[-20:]:
+    for item in signal_history[-20:]:
         copy_item = dict(item)
         copy_item["chartLabel"] = _chart_label(str(item.get("measuredAt", "")))
         chart_history.append(copy_item)
 
+    live_chart_history = []
+    for item in live_history[-120:]:
+        copy_item = dict(item)
+        copy_item["chartLabel"] = _chart_label(str(item.get("measuredAt", "")))
+        live_chart_history.append(copy_item)
+
     return {
         "current": current,
+        "liveCurrent": live_current,
         "history": chart_history,
+        "liveHistory": live_chart_history,
         "historyCount": len(history),
         "requestCount": len(history),
         "lastMeasuredAt": current.get("measuredAt") if current else None,
@@ -589,13 +774,13 @@ def load_benchmark_summary() -> dict[str, object]:
             "sources": source_counts,
             "recentActivities": recent_activities,
             "stability": {
-                "level": "warming" if len(history) < 3 else "stable",
-                "label": "zagreva se" if len(history) < 3 else "stabilno",
-                "score": 50 if len(history) < 3 else 85,
-                "reason": "Treba jos nekoliko zahteva za pouzdaniji signal." if len(history) < 3 else "Skorasnji zahtevi deluju ujednaceno.",
+                "level": "warming" if len(signal_history) < 3 else "stable",
+                "label": "zagreva se" if len(signal_history) < 3 else "stabilno",
+                "score": 50 if len(signal_history) < 3 else 85,
+                "reason": "Treba jos nekoliko zahteva za pouzdaniji signal." if len(signal_history) < 3 else "Skorasnji zahtevi deluju ujednaceno.",
             },
-            "throughputTrend": _trend(history[-4:], "totalTokensPerSecond", 1.5, -1.5),
-            "latencyTrend": _trend(history[-4:], "totalMs", 400.0, -400.0),
+            "throughputTrend": _trend(signal_history[-4:], "totalTokensPerSecond", 1.5, -1.5),
+            "latencyTrend": _trend(signal_history[-4:], "totalMs", 400.0, -400.0),
         },
         "averages": {
             "promptTokensPerSecond": _average(history, "promptTokensPerSecond"),

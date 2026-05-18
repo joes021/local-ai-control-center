@@ -16,6 +16,16 @@ import type {
   StatusPayload,
 } from "../lib/types";
 
+function renderOpenCodeState(opencode: OpenCodeStatusPayload | null) {
+  if (!opencode?.available) {
+    return "Nedostupan";
+  }
+  if (opencode.active) {
+    return "Aktivan";
+  }
+  return "Dostupan";
+}
+
 export function HomePage() {
   const [status, setStatus] = useState<StatusPayload | null>(null);
   const [serverStatus, setServerStatus] = useState<ServerStatusPayload | null>(null);
@@ -40,54 +50,44 @@ export function HomePage() {
   }
 
   useEffect(() => {
-    let active = true;
-
-    Promise.all([fetchStatus(), fetchServerStatus(), fetchOpenCodeStatus()])
-      .then(([payload, serverPayload, opencodePayload]) => {
-        if (active) {
-          setStatus(payload);
-          setServerStatus(serverPayload);
-          setOpencode(opencodePayload);
-        }
-      })
-      .catch((reason: unknown) => {
-        if (active) {
-          setError(reason instanceof Error ? reason.message : "Nepoznata greska");
-        }
-      });
-
-    return () => {
-      active = false;
-    };
+    void loadStatus();
   }, []);
+
+  const serverWarning = serverStatus?.warningSummary || "";
 
   return (
     <>
       {error ? <div className="error-panel">{error}</div> : null}
-      <StatusCard label="Verzija" value={status?.version ?? "--"} />
-      <StatusCard label="Health" value={status?.health ?? "--"} />
+      <StatusCard label="Control Center health" value={status?.health ?? "--"} />
       <StatusCard label="Aktivni model" value={status?.activeModel ?? "--"} />
       <StatusCard label="Profil" value={status?.profile ?? "--"} />
-      <StatusCard label="Server status" value={serverStatus?.status ?? "--"} />
-      <StatusCard label="Server health" value={serverStatus?.health ?? "--"} />
-      <StatusCard label="Server port" value={serverStatus ? String(serverStatus.port) : "--"} />
+      <section className="status-card">
+        <span className="status-label">Server</span>
+        <strong className="status-value">{serverStatus?.status ?? "--"}</strong>
+        <div className="summary-metrics">
+          <span>Port: {serverStatus ? String(serverStatus.port) : "--"}</span>
+          <span>Health: {serverStatus?.health ?? "--"}</span>
+          <span>Runtime: {serverStatus?.activeRuntimeLabel ?? "--"}</span>
+        </div>
+        {serverWarning ? <div className="warning-badge">Server warning: {serverWarning}</div> : null}
+      </section>
       <StatusCard label="Aktivan runtime" value={status?.activeRuntimeLabel ?? "--"} />
       <StatusCard
         label="Dostupni runtime-i"
         value={status?.availableRuntimes?.length ? status.availableRuntimes.join(", ") : "--"}
       />
-      <StatusCard label="TurboQuant status" value={status?.turboQuantStatus ?? "--"} />
       <StatusCard label="Status runtime servera" value={status?.runtimeLiveStatus ?? "--"} />
       <section className="status-card">
         <span className="status-label">OpenCode</span>
-        <strong className="status-value">
-          {opencode?.available ? "Dostupan" : "Nije dostupan"}
-        </strong>
+        <strong className="status-value">{renderOpenCodeState(opencode)}</strong>
+        <div className="summary-metrics">
+          <span>Instanci: {opencode?.instanceCount ?? 0}</span>
+          <span>Profil: {opencode?.profile || "--"}</span>
+        </div>
         <p className="helper-text">
-          Promena modela vazi za novi OpenCode session. Vec otvoren OpenCode prozor ne menja
-          model usred sesije.
+          Promena modela vazi za novi OpenCode session.
         </p>
-        <div className="inline-actions">
+        <div className="inline-actions compact-actions">
           <button
             type="button"
             onClick={async () => {
@@ -100,11 +100,12 @@ export function HomePage() {
           </button>
         </div>
       </section>
-      <StatusCard label="Port" value={status ? String(status.uiPort) : "--"} />
-      <StatusCard label="Access mode" value={status?.accessMode ?? "--"} />
+
       <section className="status-card wide-card">
         <span className="status-label">Server summary</span>
-        <strong className="status-value">{serverStatus?.lastReason || "Ucitavam server lifecycle status..."}</strong>
+        <strong className="status-value">
+          {serverStatus?.lastReason || "Ucitavam server lifecycle status..."}
+        </strong>
         <p className="helper-text">
           Status: {serverStatus?.status || "--"} | Health: {serverStatus?.health || "--"} | Port:{" "}
           {serverStatus ? String(serverStatus.port) : "--"} | Runtime: {serverStatus?.activeRuntimeLabel || "--"}
@@ -119,7 +120,7 @@ export function HomePage() {
       <section className="status-card wide-card">
         <span className="status-label">Binar u upotrebi</span>
         <strong className="status-value">
-          {status?.activeRuntimeBinary || "Nije potvrđeno."}
+          {status?.activeRuntimeBinary || "Nije potvrdeno."}
         </strong>
         <p className="helper-text">
           Izvor potvrde: {status?.activeRuntimeBinarySource || "nema potvrde"}
@@ -177,8 +178,8 @@ export function HomePage() {
           OpenCode config: {opencode?.configPath || "nije pronadjen"}
         </p>
         <p className="helper-text">
-          Security mode: {opencode?.securityMode || "--"} | Capability mode:{" "}
-          {opencode?.capabilityMode || "--"}
+          Security režim: {opencode?.securityModeLabel || "--"} | Autonomija:{" "}
+          {opencode?.capabilityModeLabel || "--"}
         </p>
         <p className="helper-text">
           Audit: {opencode?.auditSummary || "Nema dodatnih OpenCode detalja."}

@@ -46,6 +46,9 @@ export type ServerStatusPayload = {
   webUrl: string;
   localWebUrl: string;
   tailscaleWebUrl: string;
+  hasWarning?: boolean;
+  warningSeverity?: string;
+  warningSummary?: string;
 };
 
 export type BenchmarkHistoryItem = {
@@ -53,9 +56,9 @@ export type BenchmarkHistoryItem = {
   chartLabel?: string;
   label: string;
   source?: string;
-  promptTokensPerSecond?: number;
-  completionTokensPerSecond?: number;
-  totalTokensPerSecond?: number;
+  promptTokensPerSecond?: number | null;
+  completionTokensPerSecond?: number | null;
+  totalTokensPerSecond?: number | null;
   totalMs?: number;
 };
 
@@ -122,7 +125,9 @@ export type SavedBenchmarkRun = {
 
 export type BenchmarkPayload = {
   current: BenchmarkHistoryItem | null;
+  liveCurrent: BenchmarkHistoryItem | null;
   history: BenchmarkHistoryItem[];
+  liveHistory: BenchmarkHistoryItem[];
   historyCount: number;
   requestCount: number;
   lastMeasuredAt: string | null;
@@ -155,9 +160,9 @@ export type BenchmarkPayload = {
     };
   };
   averages: {
-    promptTokensPerSecond: number;
-    completionTokensPerSecond: number;
-    totalTokensPerSecond: number;
+    promptTokensPerSecond: number | null;
+    completionTokensPerSecond: number | null;
+    totalTokensPerSecond: number | null;
   };
   liveLog: {
     path: string;
@@ -196,6 +201,145 @@ export type ModelsPayload = {
   local: ModelEntry[];
   huggingFace: ModelEntry[];
   unsloth: ModelEntry[];
+};
+
+export type BrowserCatalogSource = "huggingface" | "unsloth" | "other";
+
+export type BrowserMtpStatus = "has-mtp" | "no-mtp" | "unknown";
+
+export type BrowserFitStatus = "radi" | "granicno" | "ne radi" | "nije provereno";
+
+export type BrowserCatalogItem = {
+  id: string;
+  model: string;
+  family: string;
+  source: BrowserCatalogSource | string;
+  quantization: string;
+  sizeLabel: string;
+  sizeBytes: number | null;
+  updatedAt: string | null;
+  mtpStatus: BrowserMtpStatus;
+  mtpLabel: string;
+  fitStatus: BrowserFitStatus;
+  fitLabel: string;
+  sourceUrl: string;
+  downloadUrl: string;
+  summary: string;
+  filename: string;
+  repo: string;
+  tags: string[];
+  contextWindow: number | null;
+  downloads: number | null;
+  likes: number | null;
+  addedToLocal: boolean;
+  localModelId: string | null;
+};
+
+export type BrowserCatalogPayload = {
+  models: Array<Record<string, unknown>>;
+  refresh: {
+    lastRefresh: string;
+    counts: Record<string, number>;
+    warnings: string[];
+    errors: string[];
+    sources: Record<string, Record<string, unknown>>;
+  };
+};
+
+export type BrowserRefreshResult = ActionResult & {
+  source?: string;
+};
+
+export type BrowserCompatibilityPayload = {
+  status: string;
+  checkedAt?: string;
+  summary: string;
+  fitStatus: BrowserFitStatus;
+  fitLabel: string;
+  speedStatus?: string;
+  speedLabel?: string;
+  checks: Array<{
+    label: string;
+    value: string;
+    outcome: "pass" | "warn" | "fail" | "info";
+  }>;
+  reasoning?: Record<string, string>;
+  memoryBudget?: {
+    vram: {
+      requiredGiB: number | null;
+      availableGiB: number | null;
+      usagePercent: number | null;
+    };
+    ram: {
+      requiredGiB: number | null;
+      availableGiB: number | null;
+      usagePercent: number | null;
+    };
+    contextPressure: {
+      level: string;
+      label: string;
+      currentContext: number | null;
+      effectiveCapacity: number | null;
+      usagePercent: number | null;
+      details: string;
+    };
+  };
+  systemSnapshot?: {
+    ramGiB?: number;
+    vramGiB?: number;
+    context?: number;
+    outputTokens?: number;
+    turboQuantAvailable?: boolean;
+    turboQuantConfig?: {
+      ctk: string;
+      ctv: string;
+      ncmoe: number;
+      runtimePreference: string;
+    };
+  };
+  recommendations?: Array<{
+    id: string;
+    title: string;
+    summary: string;
+    tradeoff: string;
+    severity: string;
+    action?: CompatibilityAction;
+  }>;
+};
+
+export type CompatibilityAction = {
+  kind: string;
+  value?: string | number;
+  ctk?: string;
+  ctv?: string;
+  actions?: CompatibilityAction[];
+  requiresConfirmation?: boolean;
+};
+
+export type CompatibilityCheckRequest = {
+  catalogModelId?: string;
+  model?: Record<string, unknown>;
+  overrides?: {
+    ramGiB?: number;
+    vramGiB?: number;
+    context?: number;
+    outputTokens?: number;
+    turboQuantAvailable?: boolean;
+    ctk?: string;
+    ctv?: string;
+    ncmoe?: number;
+    runtimePreference?: string;
+  };
+};
+
+export type CompatibilityApplyResponse = {
+  result: ActionResult;
+  compatibility: BrowserCompatibilityPayload;
+};
+
+export type BrowserAddToLocalResult = ActionResult & {
+  localModelId?: string;
+  promptDownload?: boolean;
 };
 
 export type DownloadProgressPayload = {
@@ -299,6 +443,13 @@ export type TurboQuantSchemaPayload = {
 
 export type OpenCodeStatusPayload = {
   available: boolean;
+  active: boolean;
+  instanceCount: number;
+  instances: Array<{
+    pid?: number | null;
+    name?: string;
+    commandLine?: string;
+  }>;
   configExists: boolean;
   configPath: string;
   configDir: string;
@@ -309,10 +460,35 @@ export type OpenCodeStatusPayload = {
   generalSteps: number;
   exploreSteps: number;
   securityMode: string;
+  securityModeLabel: string;
   capabilityMode: string;
+  capabilityModeLabel: string;
   profile: string;
   auditRiskLevel: string;
   auditSummary: string;
+};
+
+export type OpenCodeStepValues = {
+  buildSteps: number;
+  planSteps: number;
+  generalSteps: number;
+  exploreSteps: number;
+};
+
+export type OpenCodeStepPreset = {
+  id: string;
+  name: string;
+  steps: OpenCodeStepValues;
+  summary: string;
+};
+
+export type OpenCodeStepSchemaPayload = {
+  builtInPresets: OpenCodeStepPreset[];
+  userPresets: OpenCodeStepPreset[];
+  currentSteps: OpenCodeStepValues;
+  currentSummary: string;
+  defaultSteps: OpenCodeStepValues;
+  defaultSummary: string;
 };
 
 export type ActionResult = {

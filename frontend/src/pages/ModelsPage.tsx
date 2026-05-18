@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ActionResultPanel } from "../components/ActionResultPanel";
+import { CompatibilityCalculatorModal } from "../components/CompatibilityCalculatorModal";
 import {
   activateModel,
   addHfModel,
@@ -16,6 +17,7 @@ import {
 } from "../lib/api";
 import type {
   ActionResult,
+  CompatibilityCheckRequest,
   DownloadProgressPayload,
   ModelEntry,
   ModelsPayload,
@@ -69,6 +71,36 @@ function formatMiB(value: number | null | undefined) {
   return `${value} MiB`;
 }
 
+function buildCompatibilityRequest(item: ModelEntry): CompatibilityCheckRequest {
+  const filename = item.filename || item.id;
+  const quantizationMatch = filename.match(/(UD-[A-Z0-9_]+|IQ[0-9A-Z_]+|Q[2-9]_[A-Z0-9_]+|Q[2-9][A-Z0-9_]+)/i);
+  const quantization = quantizationMatch ? quantizationMatch[1].toUpperCase() : "unknown";
+  const minimumVramGiB =
+    item.minimumGpuMiB === null || item.minimumGpuMiB === undefined ? null : Number((item.minimumGpuMiB / 1024).toFixed(2));
+  const recommendedVramGiB =
+    item.recommendedGpuMiB === null || item.recommendedGpuMiB === undefined
+      ? null
+      : Number((item.recommendedGpuMiB / 1024).toFixed(2));
+  const joined = `${item.id} ${item.label} ${filename}`.toLowerCase();
+  return {
+    model: {
+      id: item.id,
+      label: item.label,
+      filename,
+      family: item.family ?? "Unknown",
+      quantization,
+      approxSizeGiB: item.approxSizeGiB ?? null,
+      minimumRamGiB: item.minimumRamGiB ?? null,
+      minimumVramGiB,
+      recommendedVramGiB,
+      contextWindow: joined.includes("qwen3.6") ? 262144 : 131072,
+      defaultOutputTokens: 4096,
+      moe: joined.includes("a3b") || joined.includes("moe"),
+      turboQuantReady: /^(UD-|IQ|Q2|Q3|Q4)/.test(quantization),
+    },
+  };
+}
+
 function DownloadProgressCard({ progress }: { progress: DownloadProgressPayload | null }) {
   if (!progress) {
     return null;
@@ -116,10 +148,12 @@ function FilterResultsCard({
   filter,
   items,
   onChanged,
+  onCheckCompatibility,
 }: {
   filter: ModelsFilter;
   items: ModelEntry[];
   onChanged: () => Promise<unknown>;
+  onCheckCompatibility: (item: ModelEntry) => void;
 }) {
   const [result, setResult] = useState<ActionResult | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -215,6 +249,13 @@ function FilterResultsCard({
                     Download
                   </button>
                   <button
+                    disabled={Boolean(pendingAction)}
+                    onClick={() => onCheckCompatibility(item)}
+                    type="button"
+                  >
+                    Check compatibility
+                  </button>
+                  <button
                     className="danger-button"
                     disabled={Boolean(pendingAction)}
                     onClick={() => {
@@ -289,6 +330,7 @@ function ModelGroup({
   collapsed,
   onToggle,
   onChanged,
+  onCheckCompatibility,
 }: {
   title: string;
   groupKey: GroupKey;
@@ -296,6 +338,7 @@ function ModelGroup({
   collapsed: boolean;
   onToggle: (group: GroupKey) => void;
   onChanged: () => Promise<unknown>;
+  onCheckCompatibility: (item: ModelEntry) => void;
 }) {
   const [result, setResult] = useState<ActionResult | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -387,6 +430,13 @@ function ModelGroup({
                       Download
                     </button>
                     <button
+                      disabled={Boolean(pendingAction)}
+                      onClick={() => onCheckCompatibility(item)}
+                      type="button"
+                    >
+                      Check compatibility
+                    </button>
+                    <button
                       className="danger-button"
                       disabled={Boolean(pendingAction)}
                       onClick={() => {
@@ -476,6 +526,8 @@ export function ModelsPage() {
     huggingFace: false,
     unsloth: false,
   });
+  const [compatibilityRequest, setCompatibilityRequest] = useState<CompatibilityCheckRequest | null>(null);
+  const [compatibilityTitle, setCompatibilityTitle] = useState("Model");
   const progressStatusRef = useRef<string>("idle");
 
   function showClientError(summary: string) {
@@ -770,7 +822,21 @@ export function ModelsPage() {
         </p>
       </section>
 
-        <FilterResultsCard filter={modelsFilter} items={filteredItems} onChanged={reloadModels} />
+        <FilterResultsCard
+          filter={modelsFilter}
+          items={filteredItems}
+          onChanged={reloadModels}
+          onCheckCompatibility={(item) => {
+            setCompatibilityTitle(item.label);
+            setCompatibilityRequest(buildCompatibilityRequest(item));
+          }}
+        />
+      <CompatibilityCalculatorModal
+        isOpen={Boolean(compatibilityRequest)}
+        title={compatibilityTitle}
+        request={compatibilityRequest}
+        onClose={() => setCompatibilityRequest(null)}
+      />
       <DownloadProgressCard progress={downloadProgress} />
 
       <section className="status-card wide-card">
@@ -956,6 +1022,10 @@ export function ModelsPage() {
           setCollapsedGroups((current) => ({ ...current, [group]: !current[group] }))
         }
         onChanged={reloadModels}
+        onCheckCompatibility={(item) => {
+          setCompatibilityTitle(item.label);
+          setCompatibilityRequest(buildCompatibilityRequest(item));
+        }}
       />
       <ModelGroup
         title="Lokalni modeli"
@@ -966,6 +1036,10 @@ export function ModelsPage() {
           setCollapsedGroups((current) => ({ ...current, [group]: !current[group] }))
         }
         onChanged={reloadModels}
+        onCheckCompatibility={(item) => {
+          setCompatibilityTitle(item.label);
+          setCompatibilityRequest(buildCompatibilityRequest(item));
+        }}
       />
       <ModelGroup
         title="Hugging Face modeli"
@@ -976,6 +1050,10 @@ export function ModelsPage() {
           setCollapsedGroups((current) => ({ ...current, [group]: !current[group] }))
         }
         onChanged={reloadModels}
+        onCheckCompatibility={(item) => {
+          setCompatibilityTitle(item.label);
+          setCompatibilityRequest(buildCompatibilityRequest(item));
+        }}
       />
       <ModelGroup
         title="Unsloth modeli"
@@ -986,6 +1064,10 @@ export function ModelsPage() {
           setCollapsedGroups((current) => ({ ...current, [group]: !current[group] }))
         }
         onChanged={reloadModels}
+        onCheckCompatibility={(item) => {
+          setCompatibilityTitle(item.label);
+          setCompatibilityRequest(buildCompatibilityRequest(item));
+        }}
       />
     </>
   );

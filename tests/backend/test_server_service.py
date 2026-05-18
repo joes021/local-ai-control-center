@@ -64,11 +64,62 @@ class ServerServiceTests(unittest.TestCase):
             self.assertEqual(payload["port"], 8091)
             self.assertEqual(payload["health"], "ok")
             self.assertEqual(payload["pid"], 4321)
+            self.assertFalse(payload["hasWarning"])
+            self.assertEqual(payload["warningSeverity"], "")
+            self.assertEqual(payload["warningSummary"], "")
             self.assertEqual(payload["activeModel"], "unsloth-Qwen3.6-35B-A3B-UD-IQ3_S.gguf")
             self.assertEqual(payload["activeRuntime"], "turboquant")
             self.assertEqual(payload["lastReason"], "Health endpoint returned OK.")
             self.assertEqual(payload["webUrl"], "http://127.0.0.1:8091/")
             self.assertEqual(payload["healthUrl"], "http://127.0.0.1:8091/health")
+
+    def test_load_server_status_exposes_warning_summary_for_degraded_state(self):
+        from backend.app.services.server_service import load_server_status
+
+        with TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            (home / "state").mkdir(parents=True)
+            (home / "state" / "install-state.json").write_text(
+                json.dumps({"port": 8091, "profile": "balanced"}),
+                encoding="utf-8",
+            )
+            (home / "state" / "server-lifecycle.json").write_text(
+                json.dumps(
+                    {
+                        "state": "active",
+                        "reason": "Sacuvani lifecycle je tvrdio da je server aktivan, ali health ne odgovara.",
+                        "updatedAt": "2026-05-17T18:22:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch(
+                "backend.app.services.server_service.load_local_qwen_summary",
+                return_value={
+                    "activeModel": "demo.gguf",
+                    "profile": "balanced",
+                    "runtime": {
+                        "active": "llama.cpp",
+                        "runtimeLiveStatus": "nije potvrdjen",
+                        "runtimeLiveReason": "Health endpoint nije dostupan.",
+                    },
+                },
+            ):
+                with patch(
+                    "backend.app.services.server_service.probe_runtime_health",
+                    return_value=("offline", "Health endpoint nije dostupan."),
+                ):
+                    with patch(
+                        "backend.app.services.server_service.detect_server_pid",
+                        return_value=None,
+                    ):
+                        payload = load_server_status(local_qwen_home=home)
+
+        self.assertEqual(payload["status"], "active")
+        self.assertTrue(payload["hasWarning"])
+        self.assertEqual(payload["warningSeverity"], "warning")
+        self.assertIn("Health endpoint nije dostupan", payload["warningSummary"])
 
     def test_start_server_uses_windows_launcher_with_profile_and_wait(self):
         from backend.app.services.server_service import start_server

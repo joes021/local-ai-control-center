@@ -44,15 +44,65 @@ class OpenCodeServiceTests(unittest.TestCase):
 """.strip(),
                 encoding="utf-8",
             )
-            with mock.patch.object(opencode_service, "detect_local_qwen_home", return_value=home):
+            with (
+                mock.patch.object(opencode_service, "detect_local_qwen_home", return_value=home),
+                mock.patch.object(
+                    opencode_service,
+                    "_detect_opencode_instances",
+                    return_value=[
+                        {
+                            "pid": 4321,
+                            "name": "node.exe",
+                            "commandLine": r"C:\Program Files\nodejs\node.exe opencode",
+                        }
+                    ],
+                ),
+            ):
                 payload = opencode_service.load_opencode_status_payload()
 
         self.assertTrue(payload["available"])
+        self.assertTrue(payload["active"])
+        self.assertEqual(payload["instanceCount"], 1)
+        self.assertEqual(payload["instances"][0]["pid"], 4321)
         self.assertEqual(payload["workingDirectory"], r"C:\repo")
-        self.assertEqual(payload["securityMode"], "blacklist")
+        self.assertEqual(payload["securityMode"], "workspace-write")
+        self.assertEqual(payload["securityModeLabel"], "Ogranicen agent sa blacklist pravilima")
         self.assertEqual(payload["capabilityMode"], "confirm-commands")
+        self.assertEqual(payload["capabilityModeLabel"], "3. Citanje + izmena + komande uz potvrdu")
         self.assertEqual(payload["profile"], "video")
         self.assertIn("medium", payload["auditSummary"])
+
+    def test_detect_windows_instances_prefers_real_opencode_processes_over_wrappers(self):
+        from backend.app.services import opencode_service
+
+        raw_instances = [
+            {"pid": 111, "name": "powershell.exe", "commandLine": "powershell ... opencode"},
+            {"pid": 222, "name": "node.exe", "commandLine": "node ... opencode"},
+            {"pid": 333, "name": "opencode.exe", "commandLine": r"C:\tool\opencode.exe --model foo"},
+            {"pid": 444, "name": "powershell.exe", "commandLine": "powershell ... opencode"},
+            {"pid": 555, "name": "node.exe", "commandLine": "node ... opencode"},
+            {"pid": 666, "name": "opencode.exe", "commandLine": r"C:\tool\opencode.exe --model foo"},
+        ]
+
+        filtered = opencode_service._prefer_primary_opencode_instances(raw_instances)
+
+        self.assertEqual([item["pid"] for item in filtered], [333, 666])
+
+    def test_load_opencode_status_payload_returns_empty_instance_data_when_unavailable(self):
+        from backend.app.services import opencode_service
+
+        with mock.patch.dict("os.environ", {"CONTROL_CENTER_NEXT_TARGET_PLATFORM": "linux"}, clear=False):
+            with mock.patch.object(
+                opencode_service,
+                "load_settings_payload",
+                return_value={"profile": "balanced", "workingDirectory": "/repo"},
+            ):
+                payload = opencode_service.load_opencode_status_payload()
+
+        self.assertFalse(payload["available"])
+        self.assertFalse(payload["active"])
+        self.assertEqual(payload["instanceCount"], 0)
+        self.assertEqual(payload["instances"], [])
 
     def test_apply_opencode_settings_reports_success_when_save_and_audit_pass(self):
         from backend.app.services import opencode_service

@@ -54,6 +54,7 @@ def load_server_status(*, local_qwen_home: Path | None = None) -> dict[str, obje
         "webUrl": local_web_url,
         "localWebUrl": local_web_url,
     }
+    payload.update(_build_warning_summary(status=status, health=health, health_reason=health_reason, lifecycle_reason=payload["lastReason"], pid=pid))
 
     config = get_config()
     if config.access_mode == "tailscale":
@@ -219,3 +220,41 @@ def _runtime_label(runtime_name: str) -> str:
         "turboquant": "TurboQuant",
         "unknown": "nepoznato",
     }.get(runtime_name, runtime_name)
+
+
+def _build_warning_summary(
+    *,
+    status: str,
+    health: str,
+    health_reason: str,
+    lifecycle_reason: object,
+    pid: int | None,
+) -> dict[str, object]:
+    lifecycle_text = str(lifecycle_reason or "").strip()
+    health_text = str(health_reason or "").strip()
+
+    if status in {"failed", "timeout"}:
+        return {
+            "hasWarning": True,
+            "warningSeverity": "error",
+            "warningSummary": lifecycle_text or health_text or "Server nije uspesno podignut.",
+        }
+
+    if health != "ok":
+        base = health_text or lifecycle_text or "Server health nije potvrdjen."
+        if status == "active" and pid is None:
+            if health_text:
+                base = health_text
+            else:
+                base = lifecycle_text or "Lifecycle tvrdi da je server aktivan, ali proces nije pronadjen."
+        return {
+            "hasWarning": True,
+            "warningSeverity": "warning",
+            "warningSummary": base,
+        }
+
+    return {
+        "hasWarning": False,
+        "warningSeverity": "",
+        "warningSummary": "",
+    }

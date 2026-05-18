@@ -61,6 +61,7 @@ PROJECT_STATE_DIR = Path(__file__).resolve().parents[3] / "state"
 LEGACY_BACKEND_STATE_DIR = Path(__file__).resolve().parents[2] / "state"
 TURBOQUANT_CONFIG_FILE = "control-center-next-turboquant-config.json"
 TURBOQUANT_PRESETS_FILE = "control-center-next-turboquant-presets.json"
+OPENCODE_STEP_PRESETS_FILE = "control-center-next-opencode-step-presets.json"
 
 TURBOQUANT_PARAMETERS = [
     {
@@ -235,6 +236,49 @@ UNSLOTH_RECOMMENDED_MODELS = [
         "quantization": "UD-Q2_K_XL",
         "fitNote": "Stretch 27B izbor kad juris veci model po svaku cenu.",
         "mtp": False,
+    },
+]
+
+OPENCODE_STEP_BUILTIN_PRESETS = [
+    {
+        "id": "safe",
+        "name": "Safe",
+        "steps": {
+            "buildSteps": 80,
+            "planSteps": 60,
+            "generalSteps": 80,
+            "exploreSteps": 50,
+        },
+    },
+    {
+        "id": "daily",
+        "name": "Daily",
+        "steps": {
+            "buildSteps": 140,
+            "planSteps": 100,
+            "generalSteps": 110,
+            "exploreSteps": 80,
+        },
+    },
+    {
+        "id": "deep",
+        "name": "Deep",
+        "steps": {
+            "buildSteps": 160,
+            "planSteps": 120,
+            "generalSteps": 130,
+            "exploreSteps": 90,
+        },
+    },
+    {
+        "id": "max",
+        "name": "Max",
+        "steps": {
+            "buildSteps": 180,
+            "planSteps": 160,
+            "generalSteps": 160,
+            "exploreSteps": 100,
+        },
     },
 ]
 
@@ -610,6 +654,98 @@ def delete_turboquant_user_preset(
     return True
 
 
+def load_opencode_step_schema(
+    *,
+    current_steps: dict[str, int] | None = None,
+    local_qwen_home: Path | None = None,
+) -> dict[str, object]:
+    normalized_current = _normalize_opencode_step_values(current_steps or {})
+    return {
+        "builtInPresets": [
+            {
+                **preset,
+                "summary": _format_opencode_step_summary(preset["steps"]),
+            }
+            for preset in OPENCODE_STEP_BUILTIN_PRESETS
+        ],
+        "userPresets": [
+            {
+                **preset,
+                "summary": _format_opencode_step_summary(preset["steps"]),
+            }
+            for preset in load_opencode_step_user_presets(local_qwen_home=local_qwen_home)
+        ],
+        "currentSteps": normalized_current,
+        "currentSummary": _format_opencode_step_summary(normalized_current),
+        "defaultSteps": dict(OPENCODE_STEP_BUILTIN_PRESETS[1]["steps"]),
+        "defaultSummary": _format_opencode_step_summary(OPENCODE_STEP_BUILTIN_PRESETS[1]["steps"]),
+    }
+
+
+def load_opencode_step_user_presets(
+    *,
+    local_qwen_home: Path | None = None,
+) -> list[dict[str, object]]:
+    home = local_qwen_home or detect_local_qwen_home()
+    path = _opencode_step_presets_path(home)
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError:
+        return []
+    presets = payload.get("presets") or []
+    if not isinstance(presets, list):
+        return []
+    normalized: list[dict[str, object]] = []
+    for item in presets:
+        if not isinstance(item, dict):
+            continue
+        normalized.append(
+            {
+                "id": str(item.get("id", "") or ""),
+                "name": str(item.get("name", "") or ""),
+                "steps": _normalize_opencode_step_values(item.get("steps", {})),
+            }
+        )
+    return [item for item in normalized if item["id"] and item["name"]]
+
+
+def save_opencode_step_preset(
+    payload: dict[str, object],
+    *,
+    local_qwen_home: Path | None = None,
+) -> dict[str, object]:
+    home = local_qwen_home or detect_local_qwen_home()
+    name = str(payload.get("name", "") or "").strip()
+    if not name:
+        raise ValueError("Ime OpenCode preset-a je obavezno.")
+    preset = {
+        "id": _slugify_preset_name(name),
+        "name": name,
+        "steps": _normalize_opencode_step_values(payload.get("steps", {})),
+    }
+    existing = load_opencode_step_user_presets(local_qwen_home=home)
+    filtered = [item for item in existing if str(item.get("id")) != preset["id"]]
+    filtered.append(preset)
+    _write_opencode_step_presets(home, filtered)
+    return preset
+
+
+def delete_opencode_step_preset(
+    preset_id: str,
+    *,
+    local_qwen_home: Path | None = None,
+) -> bool:
+    home = local_qwen_home or detect_local_qwen_home()
+    existing = load_opencode_step_user_presets(local_qwen_home=home)
+    filtered = [item for item in existing if str(item.get("id")) != str(preset_id)]
+    if len(filtered) == len(existing):
+        return False
+    _write_opencode_step_presets(home, filtered)
+    return True
+
+
 def _infer_thinking_payload(
     build_steps: int,
     plan_steps: int,
@@ -693,8 +829,21 @@ def _turboquant_presets_path(home: Path) -> Path:
     return home / "state" / TURBOQUANT_PRESETS_FILE
 
 
+def _opencode_step_presets_path(home: Path) -> Path:
+    return home / "state" / OPENCODE_STEP_PRESETS_FILE
+
+
 def _write_turboquant_presets(home: Path, presets: list[dict[str, object]]) -> None:
     path = _turboquant_presets_path(home)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"presets": presets}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _write_opencode_step_presets(home: Path, presets: list[dict[str, object]]) -> None:
+    path = _opencode_step_presets_path(home)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps({"presets": presets}, ensure_ascii=False, indent=2),
@@ -721,3 +870,20 @@ def _normalize_turboquant_settings(payload: object) -> dict[str, object]:
         "mmapMode": str(raw.get("mmapMode", "mmap") or "mmap"),
         "runtimePreference": str(raw.get("runtimePreference", "turboquant") or "turboquant"),
     }
+
+
+def _normalize_opencode_step_values(payload: object) -> dict[str, int]:
+    raw = payload if isinstance(payload, dict) else {}
+    return {
+        "buildSteps": int(raw.get("buildSteps", 140) or 140),
+        "planSteps": int(raw.get("planSteps", 100) or 100),
+        "generalSteps": int(raw.get("generalSteps", 110) or 110),
+        "exploreSteps": int(raw.get("exploreSteps", 80) or 80),
+    }
+
+
+def _format_opencode_step_summary(steps: dict[str, int]) -> str:
+    return (
+        f"{int(steps['buildSteps'])} / {int(steps['planSteps'])} / "
+        f"{int(steps['generalSteps'])} / {int(steps['exploreSteps'])}"
+    )

@@ -4,10 +4,13 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 APP_PAGE = ROOT / "frontend" / "src" / "App.tsx"
+BROWSER_PAGE = ROOT / "frontend" / "src" / "pages" / "BrowserPage.tsx"
 MODELS_PAGE = ROOT / "frontend" / "src" / "pages" / "ModelsPage.tsx"
 SETTINGS_PAGE = ROOT / "frontend" / "src" / "pages" / "SettingsPage.tsx"
 HOME_PAGE = ROOT / "frontend" / "src" / "pages" / "HomePage.tsx"
 SERVER_PAGE = ROOT / "frontend" / "src" / "pages" / "ServerPage.tsx"
+OPENCODE_PAGE = ROOT / "frontend" / "src" / "pages" / "OpenCodePage.tsx"
+COMPAT_MODAL = ROOT / "frontend" / "src" / "components" / "CompatibilityCalculatorModal.tsx"
 
 
 class UiSourceSmokeTests(unittest.TestCase):
@@ -23,6 +26,7 @@ class UiSourceSmokeTests(unittest.TestCase):
         self.assertIn("Download status", content)
         self.assertIn("ETA", content)
         self.assertIn("Delete", content)
+        self.assertIn("Check compatibility", content)
         self.assertIn("Pokrecem model akciju", content)
         self.assertIn("Ukloni iz liste", content)
         self.assertIn("Obrisi", content)
@@ -47,10 +51,10 @@ class UiSourceSmokeTests(unittest.TestCase):
         self.assertIn("Sacuvaj trenutni preset", content)
         self.assertIn("TurboQuant parametri", content)
         self.assertIn("Load preset", content)
-        self.assertIn("OpenCode config", content)
-        self.assertIn("Security mode", content)
-        self.assertIn("Capability mode", content)
-        self.assertIn("Save OpenCode settings", content)
+        self.assertIn("TURBOQUANT_DRAFT_STORAGE_KEY", content)
+        self.assertIn("Save model settings", content)
+        self.assertIn("Restore default", content)
+        self.assertNotIn("Step mapping", content)
         self.assertNotIn("<select", content)
 
     def test_home_page_contains_runtime_switch_controls(self):
@@ -60,14 +64,40 @@ class UiSourceSmokeTests(unittest.TestCase):
         self.assertIn("Koristi TurboQuant", content)
         self.assertIn("Dostupni runtime-i", content)
         self.assertIn("Status runtime servera", content)
-        self.assertIn("Server status", content)
-        self.assertIn("Server health", content)
+        self.assertIn("Control Center health", content)
+        self.assertIn("Server summary", content)
+        self.assertIn("Runtime summary", content)
+        self.assertIn("Binar u upotrebi", content)
+        self.assertIn("TurboQuant detalji", content)
+        self.assertIn("Local URL", content)
+        self.assertIn("Tailscale URL", content)
+        self.assertNotIn('label="Verzija"', content)
+        self.assertNotIn('label="Access mode"', content)
         self.assertNotIn("Start llama.cpp server", content)
         self.assertNotIn("Stop llama.cpp server", content)
         self.assertNotIn("Run llama.cpp web", content)
         self.assertIn("Open OpenCode", content)
         self.assertIn("OpenCode config", content)
         self.assertIn("Promena modela vazi za novi OpenCode session", content)
+        self.assertIn("Instanci:", content)
+
+    def test_opencode_page_uses_old_control_center_labels(self):
+        content = OPENCODE_PAGE.read_text(encoding="utf-8")
+
+        self.assertIn("OpenCode stanje", content)
+        self.assertIn("Instanci:", content)
+        self.assertIn("Profil:", content)
+        self.assertIn("Security režim:", content)
+        self.assertIn("Autonomija:", content)
+        self.assertIn("Ogranicen agent sa blacklist pravilima", content)
+        self.assertIn("Potpuno otvoren agent", content)
+        self.assertIn("4. Citanje + izmena + komande bez potvrde", content)
+        self.assertIn("OpenCode steps", content)
+        self.assertIn("Aktivni preset:", content)
+        self.assertIn("Load preset", content)
+        self.assertIn("Save preset", content)
+        self.assertIn("Delete preset", content)
+        self.assertIn("Restore default", content)
 
     def test_server_page_contains_server_actions_and_detailed_status(self):
         content = SERVER_PAGE.read_text(encoding="utf-8")
@@ -90,9 +120,47 @@ class UiSourceSmokeTests(unittest.TestCase):
         self.assertIn("Local AI Control Center", content)
         self.assertIn("status?.version", content)
         self.assertIn('server: "Server"', content)
+        self.assertIn('opencode: "OpenCode"', content)
+        self.assertIn('browser: "Browser"', content)
         self.assertIn('benchmark: "Benchmark"', content)
         self.assertNotIn("Ubuntu desktop", content)
         self.assertNotIn("Ubuntu Desktop GUI Shell", content)
+
+    def test_browser_page_contains_required_catalog_strings(self):
+        content = BROWSER_PAGE.read_text(encoding="utf-8")
+
+        self.assertIn("Browser", content)
+        self.assertIn("Search", content)
+        self.assertIn("Refresh from internet", content)
+        self.assertIn("Refresh Hugging Face", content)
+        self.assertIn("Refresh Unsloth", content)
+        self.assertIn("Fit", content)
+        self.assertIn("Check compatibility", content)
+        self.assertIn("Add to local catalog", content)
+        self.assertIn("Catalog warnings", content)
+        self.assertIn("Expand warnings", content)
+        self.assertIn("Hugging Face", content)
+        self.assertIn("browser-source-cell", content)
+        self.assertIn("browser-source-text", content)
+        self.assertIn("selectedItem ? (", content)
+        self.assertIn("browser-detail-top", content)
+        self.assertIn("rowsPerPage", content)
+        self.assertIn("currentPage", content)
+        self.assertIn("25", content)
+        self.assertIn("browser-pagination", content)
+        self.assertNotIn("<aside className=\"browser-detail-panel\">", content)
+
+    def test_compatibility_modal_contains_live_calculator_actions(self):
+        content = COMPAT_MODAL.read_text(encoding="utf-8")
+
+        self.assertIn("Compatibility calculator", content)
+        self.assertIn("Expand advanced", content)
+        self.assertIn("Apply package", content)
+        self.assertIn("Re-check", content)
+        self.assertIn("TurboQuant", content)
+        self.assertIn("Context pressure", content)
+        self.assertIn("VRAM", content)
+        self.assertIn("RAM", content)
 
     def test_models_page_mentions_unsloth_recommendations(self):
         content = MODELS_PAGE.read_text(encoding="utf-8")
@@ -134,11 +202,30 @@ class UiSourceSmokeTests(unittest.TestCase):
         self.assertIn("LIVE THROUGHPUT", benchmark_page)
         self.assertIn("Benchmark grafikon", benchmark_page)
         self.assertIn("Request activity", benchmark_page)
-        self.assertIn("Input tok/s", benchmark_page)
-        self.assertIn("Output tok/s", benchmark_page)
-        self.assertIn("Ukupno tok/s", benchmark_page)
+        self.assertIn("Live input tok/s", benchmark_page)
+        self.assertIn("Live output tok/s", benchmark_page)
+        self.assertIn("Live ukupno tok/s", benchmark_page)
+        self.assertIn("Avg input tok/s", benchmark_page)
+        self.assertIn("Avg output tok/s", benchmark_page)
+        self.assertIn("Avg ukupno tok/s", benchmark_page)
+        self.assertIn("liveCurrent", benchmark_page)
+        self.assertIn("liveHistory", benchmark_page)
         self.assertIn("window.setInterval", benchmark_page)
         self.assertIn("5000", benchmark_page)
+        self.assertIn('"1m"', benchmark_page)
+        self.assertIn('"5m"', benchmark_page)
+        self.assertIn('"15m"', benchmark_page)
+        self.assertIn('"1h"', benchmark_page)
+        self.assertIn("benchmark-chart-status", benchmark_page)
+        self.assertIn("benchmark-metric-value-input", benchmark_page)
+        self.assertIn("benchmark-metric-value-output", benchmark_page)
+        self.assertIn("benchmark-metric-value-total", benchmark_page)
+        self.assertIn("nema novih zahteva u poslednjih", benchmark_page)
+        self.assertIn("poslednji throughput:", benchmark_page)
+        self.assertIn("live | poslednji throughput:", benchmark_page)
+        self.assertIn("setSelectedRangeKey", benchmark_page)
+        self.assertIn("strokeDasharray", benchmark_page)
+        self.assertIn("<circle", benchmark_page)
         self.assertNotIn("Y osa: tok/s", benchmark_page)
         self.assertNotIn("X osa: skoriji zahtevi sleva nadesno", benchmark_page)
         self.assertIn("Legenda", benchmark_page)
@@ -174,6 +261,9 @@ class UiSourceSmokeTests(unittest.TestCase):
         self.assertIn(".custom-select-option-selected", styles)
         self.assertIn(".status-card:has(.custom-select-open)", styles)
         self.assertIn(".custom-select-open", styles)
+        self.assertIn(".benchmark-metric-value-input", styles)
+        self.assertIn(".benchmark-metric-value-output", styles)
+        self.assertIn(".benchmark-metric-value-total", styles)
 
 
 if __name__ == "__main__":

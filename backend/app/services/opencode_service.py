@@ -11,10 +11,18 @@ from backend.app.services.windows_common_runner import invoke_windows_common_jso
 
 
 def load_opencode_status_payload() -> dict[str, object]:
+    instances = _detect_opencode_instances()
+    active = bool(instances)
+    security_mode = "strict"
+    capability_mode = "confirm-commands"
+
     if get_target_platform() != "windows":
         settings = load_settings_payload()
         return {
             "available": False,
+            "active": active,
+            "instanceCount": len(instances),
+            "instances": instances,
             "configExists": False,
             "configPath": "",
             "configDir": "",
@@ -24,8 +32,10 @@ def load_opencode_status_payload() -> dict[str, object]:
             "planSteps": int(settings.get("planSteps", 0) or 0),
             "generalSteps": int(settings.get("generalSteps", 0) or 0),
             "exploreSteps": int(settings.get("exploreSteps", 0) or 0),
-            "securityMode": "strict",
-            "capabilityMode": "confirm-commands",
+            "securityMode": security_mode,
+            "securityModeLabel": _security_mode_label(security_mode),
+            "capabilityMode": capability_mode,
+            "capabilityModeLabel": _capability_mode_label(capability_mode),
             "profile": str(settings.get("profile", "balanced") or "balanced"),
             "auditRiskLevel": "",
             "auditSummary": "OpenCode parity backend je za sada aktivan samo na Windowsu.",
@@ -39,8 +49,8 @@ def load_opencode_status_payload() -> dict[str, object]:
         executable_path = str(_read_windows_common_scalar("Get-OpenCodeExecutable", default="") or "")
 
     agent_meta = _load_agent_meta()
-    security_mode = str(agent_meta.get("securityMode", "strict") or "strict")
-    capability_mode = str(agent_meta.get("capabilityMode", "confirm-commands") or "confirm-commands")
+    security_mode = _normalize_security_mode(agent_meta.get("securityMode", "strict"))
+    capability_mode = _normalize_capability_mode(agent_meta.get("capabilityMode", "confirm-commands"))
     working_directory = str(
         agent_meta.get("workingFolder")
         or settings.get("workingDirectory")
@@ -50,6 +60,9 @@ def load_opencode_status_payload() -> dict[str, object]:
     audit = agent_meta.get("audit") if isinstance(agent_meta.get("audit"), dict) else {}
     return {
         "available": bool(available),
+        "active": active,
+        "instanceCount": len(instances),
+        "instances": instances,
         "configExists": bool(config_path) and Path(config_path).is_file(),
         "configPath": config_path,
         "configDir": str(Path(config_path).parent) if config_path else "",
@@ -60,7 +73,9 @@ def load_opencode_status_payload() -> dict[str, object]:
         "generalSteps": int(settings.get("generalSteps", 0) or 0),
         "exploreSteps": int(settings.get("exploreSteps", 0) or 0),
         "securityMode": security_mode,
+        "securityModeLabel": _security_mode_label(security_mode),
         "capabilityMode": capability_mode,
+        "capabilityModeLabel": _capability_mode_label(capability_mode),
         "profile": profile,
         "auditRiskLevel": str(audit.get("riskLevel", "") or ""),
         "auditSummary": _summarize_audit(audit),
@@ -191,6 +206,126 @@ def _load_agent_meta() -> dict[str, object]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _detect_opencode_instances() -> list[dict[str, object]]:
+    if get_target_platform() == "windows":
+        return _detect_windows_opencode_instances()
+    return _detect_unix_opencode_instances()
+
+
+def _detect_windows_opencode_instances() -> list[dict[str, object]]:
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            (
+                "$matches = Get-CimInstance Win32_Process | Where-Object { "
+                "($_.Name -match '^opencode(\\.exe|\\.cmd)?$') -or "
+                "($_.CommandLine -like '*node_modules\\opencode-ai\\bin\\opencode*') -or "
+                "($_.CommandLine -like '*opencode-windows-x64\\bin\\opencode.exe*') "
+                "} | Where-Object { $_.CommandLine -notlike '*Get-CimInstance Win32_Process*' }; "
+                "$matches | ForEach-Object { [pscustomobject]@{ "
+                "pid = $_.ProcessId; "
+                "name = $_.Name; "
+                "commandLine = $_.CommandLine "
+                "} } | ConvertTo-Json -Depth 3"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if completed.returncode != 0 or not completed.stdout.strip():
+        return []
+    try:
+        parsed = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return []
+    return _prefer_primary_opencode_instances(_normalize_instance_payload(parsed))
+
+
+def _detect_unix_opencode_instances() -> list[dict[str, object]]:
+    try:
+        completed = subprocess.run(
+            ["ps", "-eo", "pid=,comm=,args="],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+    except OSError:
+        return []
+    if completed.returncode != 0:
+        return []
+    instances: list[dict[str, object]] = []
+    for line in completed.stdout.splitlines():
+        raw = line.strip()
+        if "opencode" not in raw.lower():
+            continue
+        parts = raw.split(None, 2)
+        if len(parts) < 3 or not parts[0].isdigit():
+            continue
+        instances.append(
+            {
+                "pid": int(parts[0]),
+                "name": parts[1],
+                "commandLine": parts[2],
+            }
+        )
+    return instances
+
+
+def _normalize_instance_payload(parsed: object) -> list[dict[str, object]]:
+    if isinstance(parsed, dict):
+        parsed = [parsed]
+    if not isinstance(parsed, list):
+        return []
+    instances: list[dict[str, object]] = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        pid = item.get("pid")
+        name = item.get("name")
+        command_line = item.get("commandLine")
+        if not isinstance(pid, int):
+            continue
+        instances.append(
+            {
+                "pid": pid,
+                "name": str(name or ""),
+                "commandLine": str(command_line or ""),
+            }
+        )
+    return instances
+
+
+def _prefer_primary_opencode_instances(instances: list[dict[str, object]]) -> list[dict[str, object]]:
+    if not instances:
+        return []
+
+    by_name = {
+        "opencode.exe": [],
+        "opencode.cmd": [],
+        "node.exe": [],
+        "powershell.exe": [],
+    }
+    for item in instances:
+        name = str(item.get("name", "") or "").lower()
+        if name in by_name:
+            by_name[name].append(item)
+
+    for preferred in ("opencode.exe", "opencode.cmd", "node.exe", "powershell.exe"):
+        if by_name[preferred]:
+            return by_name[preferred]
+
+    return instances
+
+
 def _load_windows_settings_json() -> dict[str, object]:
     result = invoke_windows_common_json("Get-Settings")
     payload = result.get("payload", {})
@@ -207,13 +342,51 @@ def _read_windows_common_scalar(function_name: str, default: object = "") -> obj
     return payload
 
 
+def _normalize_security_mode(value: object) -> str:
+    normalized = str(value or "strict").strip().lower()
+    if normalized == "blacklist":
+        return "workspace-write"
+    if normalized in {"strict", "workspace-write", "open"}:
+        return normalized
+    return "strict"
+
+
+def _security_mode_label(mode: str) -> str:
+    if mode == "workspace-write":
+        return "Ogranicen agent sa blacklist pravilima"
+    if mode == "open":
+        return "Potpuno otvoren agent"
+    return "Strogo ogranicen agent"
+
+
+def _normalize_capability_mode(value: object) -> str:
+    normalized = str(value or "confirm-commands").strip().lower()
+    if normalized == "workspace-write":
+        return "read-write"
+    if normalized == "benchmark":
+        return "auto-commands"
+    if normalized in {"read-only", "read-write", "confirm-commands", "auto-commands"}:
+        return normalized
+    return "confirm-commands"
+
+
+def _capability_mode_label(mode: str) -> str:
+    mapping = {
+        "read-only": "1. Samo citanje fajlova",
+        "read-write": "2. Citanje + izmena fajlova",
+        "confirm-commands": "3. Citanje + izmena + komande uz potvrdu",
+        "auto-commands": "4. Citanje + izmena + komande bez potvrde",
+    }
+    return mapping.get(mode, "3. Citanje + izmena + komande uz potvrdu")
+
+
 def _summarize_audit(audit: dict[str, object]) -> str:
     if not audit:
         return "Nema sacuvanog OpenCode audit rezimea."
     risk = str(audit.get("riskLevel", "") or "").strip()
     reasons = audit.get("reasons")
     if isinstance(reasons, list) and reasons:
-        first_reason = str(reasons[0] or "").strip()
+        first_reason = _humanize_audit_reason(str(reasons[0] or "").strip())
     else:
         first_reason = ""
     if risk and first_reason:
@@ -221,6 +394,19 @@ def _summarize_audit(audit: dict[str, object]) -> str:
     if risk:
         return f"Risk level: {risk}"
     return "OpenCode audit je sacuvan bez dodatnih detalja."
+
+
+def _humanize_audit_reason(reason: str) -> str:
+    replacements = {
+        "Blacklist mode je srednji nivo zastite i zavisi od deny pravila.": "Ogranicen agent sa blacklist pravilima blokira osetljive Windows putanje.",
+        "Strict mode drzi agenta unutar radnog foldera.": "Strogo ogranicen agent radi samo unutar izabranog foldera.",
+        "Otvoren security mode dozvoljava izlazak van radnog foldera.": "Potpuno otvoren agent dozvoljava izlazak van radnog foldera.",
+        "Auto command mode dozvoljava samostalno izvrsavanje komandi.": "4. Citanje + izmena + komande bez potvrde dozvoljava samostalno izvrsavanje komandi.",
+        "Command mode uz potvrdu je umereno rizican.": "3. Citanje + izmena + komande uz potvrdu trazi potvrdu pre shell komandi.",
+        "Read-write mod menja fajlove, ali bez shell komandi.": "2. Citanje + izmena fajlova menja fajlove bez shell komandi.",
+        "Read-only mod ne menja fajlove i ne izvrsava komande.": "1. Samo citanje fajlova ne menja fajlove i ne izvrsava komande.",
+    }
+    return replacements.get(reason, reason)
 
 
 def _resolve_windows_launcher_script(name: str) -> Path:

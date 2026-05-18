@@ -3,7 +3,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.config import get_config
+from backend.app.routes.browser import router as browser_router
 from backend.app.routes.benchmark import router as benchmark_router
+from backend.app.routes.compatibility import router as compatibility_router
 from backend.app.routes.health import router as health_router
 from backend.app.routes.logs import router as logs_router
 from backend.app.routes.models import router as models_router
@@ -18,7 +20,9 @@ from backend.app.routes.updates import router as updates_router
 
 
 app = FastAPI(title="Local AI Control Center Backend")
+app.include_router(browser_router)
 app.include_router(benchmark_router)
+app.include_router(compatibility_router)
 app.include_router(health_router)
 app.include_router(logs_router)
 app.include_router(models_router)

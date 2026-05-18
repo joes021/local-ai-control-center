@@ -1,13 +1,22 @@
 import type {
   ActionResult,
+  BrowserAddToLocalResult,
+  BrowserCatalogPayload,
+  BrowserCatalogItem,
+  BrowserCompatibilityPayload,
+  BrowserRefreshResult,
   BenchmarkBattery,
   BenchmarkPayload,
   BenchmarkScenario,
   BenchmarkRunStatusPayload,
   DownloadProgressPayload,
+  CompatibilityApplyResponse,
+  CompatibilityCheckRequest,
   ModelActionStatusPayload,
   ModelsPayload,
   OpenCodeStatusPayload,
+  OpenCodeStepSchemaPayload,
+  OpenCodeStepValues,
   ServerStatusPayload,
   SettingsPayload,
   StatusPayload,
@@ -81,6 +90,57 @@ export async function fetchModels(): Promise<ModelsPayload> {
   return response.json() as Promise<ModelsPayload>;
 }
 
+export async function fetchBrowserCatalog(): Promise<BrowserCatalogPayload> {
+  return getJsonFromCandidates<BrowserCatalogPayload>(["/api/browser/catalog"]);
+}
+
+export async function refreshBrowserCatalog(source?: string): Promise<BrowserRefreshResult> {
+  const payload = source ? { source } : {};
+  return postJson<typeof payload, BrowserRefreshResult>("/api/browser/catalog/refresh", payload);
+}
+
+export async function addBrowserModelToLocal(payload: {
+  source: string;
+  repoId: string;
+  filename: string;
+  label: string;
+  family: string;
+}): Promise<BrowserAddToLocalResult> {
+  return postJson<typeof payload, BrowserAddToLocalResult>("/api/browser/catalog/add", payload);
+}
+
+export async function downloadBrowserModel(modelId: string): Promise<ActionResult> {
+  return postJson<{ modelId: string }, ActionResult>("/api/models/download", { modelId });
+}
+
+export async function checkBrowserCompatibility(modelId: string): Promise<BrowserCompatibilityPayload> {
+  return postJson<CompatibilityCheckRequest, BrowserCompatibilityPayload>("/api/compatibility/check", {
+    catalogModelId: modelId,
+  });
+}
+
+export async function checkModelCompatibility(
+  payload: CompatibilityCheckRequest,
+): Promise<BrowserCompatibilityPayload> {
+  return postJson<CompatibilityCheckRequest, BrowserCompatibilityPayload>("/api/compatibility/check", payload);
+}
+
+export async function applyCompatibilityAction(payload: {
+  catalogModelId?: string;
+  model?: BrowserCatalogItem | Record<string, unknown>;
+  overrides?: CompatibilityCheckRequest["overrides"];
+  action: {
+    kind: string;
+    value?: string | number;
+    ctk?: string;
+    ctv?: string;
+    actions?: Array<Record<string, unknown>>;
+    requiresConfirmation?: boolean;
+  };
+}): Promise<CompatibilityApplyResponse> {
+  return postJson<typeof payload, CompatibilityApplyResponse>("/api/compatibility/apply", payload);
+}
+
 export async function fetchDownloadProgress(): Promise<DownloadProgressPayload> {
   const response = await fetch("/api/models/download-progress");
   if (!response.ok) {
@@ -125,6 +185,14 @@ export async function fetchOpenCodeStatus(): Promise<OpenCodeStatusPayload> {
   return response.json() as Promise<OpenCodeStatusPayload>;
 }
 
+export async function fetchOpenCodeStepSchema(): Promise<OpenCodeStepSchemaPayload> {
+  const response = await fetch("/api/opencode/steps");
+  if (!response.ok) {
+    throw new Error(`OpenCode step schema request failed: ${response.status}`);
+  }
+  return response.json() as Promise<OpenCodeStepSchemaPayload>;
+}
+
 export async function applyOpenCodeSettings(payload: {
   profile: string;
   context: number;
@@ -142,6 +210,17 @@ export async function applyOpenCodeSettings(payload: {
 
 export async function openOpenCode(profile: string): Promise<ActionResult> {
   return postJson("/api/opencode/open", { profile });
+}
+
+export async function saveOpenCodeStepPreset(payload: {
+  name: string;
+  steps: OpenCodeStepValues;
+}): Promise<ActionResult> {
+  return postJson("/api/opencode/steps/presets/save", payload);
+}
+
+export async function deleteOpenCodeStepPreset(presetId: string): Promise<ActionResult> {
+  return postJson("/api/opencode/steps/presets/delete", { presetId });
 }
 
 export async function saveTurboQuantConfig(payload: TurboQuantConfig): Promise<ActionResult> {
@@ -191,6 +270,24 @@ async function postJson<TRequest, TResponse>(
       window.clearTimeout(timeoutId);
     }
   }
+}
+
+async function getJsonFromCandidates<TResponse>(urls: string[]): Promise<TResponse> {
+  let lastError: Error | null = null;
+
+  for (const url of urls) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`GET ${url} failed: ${response.status}`);
+      }
+      return response.json() as Promise<TResponse>;
+    } catch (reason: unknown) {
+      lastError = reason instanceof Error ? reason : new Error(`GET ${url} failed`);
+    }
+  }
+
+  throw lastError ?? new Error("No GET endpoint candidates were available.");
 }
 
 export async function activateModel(modelId: string): Promise<ActionResult> {

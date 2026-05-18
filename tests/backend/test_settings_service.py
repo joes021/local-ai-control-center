@@ -139,6 +139,66 @@ class SettingsServiceTests(unittest.TestCase):
 
             self.assertEqual(restored["accessMode"], "tailscale")
 
+    def test_opencode_step_preset_roundtrip_preserves_values(self):
+        from backend.app.services.settings_service import (
+            delete_opencode_step_preset,
+            load_opencode_step_schema,
+            save_opencode_step_preset,
+        )
+
+        with TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            (home / "state").mkdir(parents=True)
+
+            saved = save_opencode_step_preset(
+                {
+                    "name": "Moj coding daily",
+                    "steps": {
+                        "buildSteps": 150,
+                        "planSteps": 105,
+                        "generalSteps": 115,
+                        "exploreSteps": 82,
+                    },
+                },
+                local_qwen_home=home,
+            )
+
+            payload = load_opencode_step_schema(
+                current_steps={
+                    "buildSteps": 80,
+                    "planSteps": 60,
+                    "generalSteps": 70,
+                    "exploreSteps": 40,
+                },
+                local_qwen_home=home,
+            )
+            restored = next(item for item in payload["userPresets"] if item["id"] == saved["id"])
+
+            self.assertEqual(restored["name"], "Moj coding daily")
+            self.assertEqual(restored["steps"]["buildSteps"], 150)
+            self.assertEqual(restored["steps"]["exploreSteps"], 82)
+
+            deleted = delete_opencode_step_preset(saved["id"], local_qwen_home=home)
+            self.assertTrue(deleted)
+
+    def test_opencode_step_schema_exposes_builtin_presets(self):
+        from backend.app.services.settings_service import load_opencode_step_schema
+
+        payload = load_opencode_step_schema(
+            current_steps={
+                "buildSteps": 140,
+                "planSteps": 100,
+                "generalSteps": 110,
+                "exploreSteps": 80,
+            }
+        )
+
+        names = [item["name"] for item in payload["builtInPresets"]]
+        self.assertIn("Safe", names)
+        self.assertIn("Daily", names)
+        self.assertIn("Deep", names)
+        self.assertIn("Max", names)
+
 
 if __name__ == "__main__":
     unittest.main()

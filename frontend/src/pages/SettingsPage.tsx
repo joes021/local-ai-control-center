@@ -3,33 +3,65 @@ import { useEffect, useState } from "react";
 import { ActionResultPanel } from "../components/ActionResultPanel";
 import { CustomSelect } from "../components/CustomSelect";
 import {
-  applyOpenCodeSettings,
   applySettings,
   deleteTurboQuantPreset,
-  fetchOpenCodeStatus,
   fetchSettings,
   fetchTurboQuantSchema,
-  openOpenCode,
   pickWorkingDirectory,
   saveTurboQuantConfig,
   saveTurboQuantPreset,
 } from "../lib/api";
 import type {
   ActionResult,
-  OpenCodeStatusPayload,
   SettingsPayload,
   TurboQuantConfig,
   TurboQuantPreset,
   TurboQuantSchemaPayload,
 } from "../lib/types";
 
+const TURBOQUANT_DRAFT_STORAGE_KEY = "local-ai-control-center:turboquant-draft";
+
 function applyPresetToConfig(preset: TurboQuantPreset): TurboQuantConfig {
   return { ...preset.settings };
 }
 
+function readDraft<T>(key: string): Partial<T> | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const raw = window.localStorage.getItem(key);
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<T>;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDraft<T>(key: string, value: T | null) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (!value) {
+    window.localStorage.removeItem(key);
+    return;
+  }
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function clearDraft(key: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.removeItem(key);
+}
+
 export function SettingsPage() {
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
-  const [opencode, setOpencode] = useState<OpenCodeStatusPayload | null>(null);
+  const [settingsDefaults, setSettingsDefaults] = useState<SettingsPayload | null>(null);
   const [schema, setSchema] = useState<TurboQuantSchemaPayload | null>(null);
   const [turboConfig, setTurboConfig] = useState<TurboQuantConfig | null>(null);
   const [presetName, setPresetName] = useState("");
@@ -40,15 +72,16 @@ export function SettingsPage() {
   const [result, setResult] = useState<ActionResult | null>(null);
 
   async function reload() {
-    const [settingsPayload, schemaPayload, opencodePayload] = await Promise.all([
+    const [settingsPayload, schemaPayload] = await Promise.all([
       fetchSettings(),
       fetchTurboQuantSchema(),
-      fetchOpenCodeStatus(),
     ]);
+    const turboDraft = readDraft<TurboQuantConfig>(TURBOQUANT_DRAFT_STORAGE_KEY);
+
     setSettings(settingsPayload);
+    setSettingsDefaults(settingsPayload);
     setSchema(schemaPayload);
-    setTurboConfig(schemaPayload.currentConfig);
-    setOpencode(opencodePayload);
+    setTurboConfig(turboDraft ? { ...schemaPayload.currentConfig, ...turboDraft } : schemaPayload.currentConfig);
   }
 
   useEffect(() => {
@@ -57,11 +90,17 @@ export function SettingsPage() {
     });
   }, []);
 
+  useEffect(() => {
+    if (turboConfig) {
+      writeDraft(TURBOQUANT_DRAFT_STORAGE_KEY, turboConfig);
+    }
+  }, [turboConfig]);
+
   if (error) {
     return <div className="error-panel">{error}</div>;
   }
 
-  if (!settings || !schema || !turboConfig || !opencode) {
+  if (!settings || !schema || !turboConfig) {
     return <div className="status-card wide-card">Ucitavam settings...</div>;
   }
 
@@ -138,6 +177,7 @@ export function SettingsPage() {
           ariaLabel="Izaberi profil"
         />
       </section>
+
       <section className="status-card">
         <span className="status-label">Thinking mode</span>
         <CustomSelect
@@ -158,6 +198,7 @@ export function SettingsPage() {
           ariaLabel="Izaberi thinking mode"
         />
       </section>
+
       <section className="status-card">
         <span className="status-label">Context</span>
         <input
@@ -171,6 +212,7 @@ export function SettingsPage() {
           }
         />
       </section>
+
       <section className="status-card">
         <span className="status-label">Output tokens</span>
         <input
@@ -184,6 +226,7 @@ export function SettingsPage() {
           }
         />
       </section>
+
       <section className="status-card wide-card">
         <span className="status-label">Working directory</span>
         <div className="form-grid">
@@ -213,93 +256,41 @@ export function SettingsPage() {
           </button>
         </div>
       </section>
-      <section className="status-card wide-card">
-        <span className="status-label">Step mapping</span>
-        <strong className="status-value">
-          Build {settings.buildSteps} | Plan {settings.planSteps} | General{" "}
-          {settings.generalSteps} | Explore {settings.exploreSteps}
-        </strong>
-      </section>
 
       <section className="status-card wide-card">
-        <span className="status-label">OpenCode config</span>
-        <strong className="status-value">
-          {opencode.available ? "OpenCode je dostupan" : "OpenCode nije dostupan"}
-        </strong>
-        <p className="helper-text">Executable: {opencode.executablePath || "nije pronadjen"}</p>
-        <p className="helper-text">OpenCode config: {opencode.configPath || "nije pronadjen"}</p>
-        <p className="helper-text">Risk audit: {opencode.auditSummary || "nema sacuvanog audita"}</p>
-        <div className="form-grid">
-          <label>
-            Security mode
-            <CustomSelect
-              value={opencode.securityMode}
-              options={[
-                { value: "strict", label: "strict" },
-                { value: "workspace-write", label: "workspace-write" },
-                { value: "open", label: "open" },
-              ]}
-              onChange={(value) =>
-                setOpencode({
-                  ...opencode,
-                  securityMode: value,
-                })
-              }
-              ariaLabel="Izaberi OpenCode security mode"
-            />
-          </label>
-          <label>
-            Capability mode
-            <CustomSelect
-              value={opencode.capabilityMode}
-              options={[
-                { value: "read-only", label: "read-only" },
-                { value: "read-write", label: "read-write" },
-                { value: "confirm-commands", label: "confirm-commands" },
-                { value: "auto-commands", label: "auto-commands" },
-              ]}
-              onChange={(value) =>
-                setOpencode({
-                  ...opencode,
-                  capabilityMode: value,
-                })
-              }
-              ariaLabel="Izaberi OpenCode capability mode"
-            />
-          </label>
+        <div className="inline-actions">
           <button
             type="button"
             onClick={async () => {
-              const actionResult = await applyOpenCodeSettings({
-                profile: settings.profile,
-                context: settings.context,
-                outputTokens: settings.outputTokens,
-                workingDirectory: settings.workingDirectory,
-                buildSteps: settings.buildSteps,
-                planSteps: settings.planSteps,
-                generalSteps: settings.generalSteps,
-                exploreSteps: settings.exploreSteps,
-                securityMode: opencode.securityMode,
-                capabilityMode: opencode.capabilityMode,
-              });
+              const actionResult = await applySettings(settings);
               setResult(actionResult);
               await reload();
             }}
           >
-            Save OpenCode settings
+            Save model settings
           </button>
           <button
             type="button"
             className="secondary-button"
-            onClick={async () => {
-              const actionResult = await openOpenCode(settings.profile);
-              setResult(actionResult);
-              await reload();
+            onClick={() => {
+              if (!settingsDefaults) {
+                return;
+              }
+              setSettings({ ...settingsDefaults });
+              setResult({
+                status: "ok",
+                action: "restore-model-settings",
+                summary: "Model settings su vraceni na poslednje sacuvane vrednosti.",
+                details: { returncode: 0, stdout: "", stderr: "" },
+              });
             }}
           >
-            Open OpenCode
+            Restore default
           </button>
         </div>
+        <p className="helper-text">
+          Dropdown izbori i ostale glavne promene postaju stvarno aktivni tek kada kliknes Save model settings.
+        </p>
       </section>
 
       <section className="status-card wide-card">
@@ -471,15 +462,15 @@ export function SettingsPage() {
 
       <section className="status-card wide-card">
         <div className="inline-actions">
-          <button type="button" onClick={() => applySettings(settings).then(setResult)}>
-            Save settings
-          </button>
           <button
             type="button"
             className="secondary-button"
             onClick={async () => {
               const actionResult = await saveTurboQuantConfig(turboConfig);
               setResult(actionResult);
+              if (actionResult.status === "ok") {
+                clearDraft(TURBOQUANT_DRAFT_STORAGE_KEY);
+              }
               await reload();
             }}
           >
