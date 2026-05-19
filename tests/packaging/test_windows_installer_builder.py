@@ -50,6 +50,7 @@ class WindowsInstallerBuilderTests(unittest.TestCase):
         self.assertIn("catalog-default", content)
         self.assertIn("Write-InstallSummary", content)
         self.assertIn("support\\launcher\\windows", content)
+        self.assertIn('$assetsDir = Join-Path $workspaceRoot "assets\\icons"', content)
         self.assertIn('Copy-FolderContent -Source (Join-Path $payloadRoot "support\\config\\profiles") -Destination (Join-Path $workspaceRoot "config\\profiles")', content)
         self.assertIn('Copy-FolderContent -Source (Join-Path $payloadRoot "support\\scripts") -Destination (Join-Path $workspaceRoot "scripts")', content)
         self.assertIn('Copy-FolderContent -Source (Join-Path $payloadRoot "support\\assets\\icons") -Destination (Join-Path $workspaceRoot "assets\\icons")', content)
