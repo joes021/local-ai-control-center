@@ -1,4 +1,4 @@
-# Local AI Control Center
+﻿# Local AI Control Center
 
 <p align="center">
   <img src="./docs/media/hero-banner.svg" alt="Local AI Control Center" width="100%" />
@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.18"><img src="https://img.shields.io/badge/release-v2.24.18-C9972B?style=for-the-badge" alt="Latest release"></a>
+  <a href="https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.19"><img src="https://img.shields.io/badge/release-v2.24.19-C9972B?style=for-the-badge" alt="Latest release"></a>
   <a href="https://github.com/joes021/local-ai-control-center/releases"><img src="https://img.shields.io/badge/download-installers-4B3B2B?style=for-the-badge" alt="Download installers"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Ubuntu%20x86__64%20%7C%20Ubuntu%20arm64-6C5430?style=for-the-badge" alt="Platforms">
   <img src="https://img.shields.io/badge/status-public%20v1-2F6B4F?style=for-the-badge" alt="Status">
@@ -21,13 +21,13 @@
 
 | Platform | Direct download |
 | --- | --- |
-| Windows | [Local-AI-Control-Center-Setup-2.24.18.exe](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.18/Local-AI-Control-Center-Setup-2.24.18.exe) |
-| Ubuntu x86_64 | [See latest Linux release assets](https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.18) |
-| Ubuntu arm64 | [See latest Linux release assets](https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.18) |
+| Windows | [Local-AI-Control-Center-Setup-2.24.19.exe](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.19/Local-AI-Control-Center-Setup-2.24.19.exe) |
+| Ubuntu x86_64 | [See latest Linux release assets](https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.19) |
+| Ubuntu arm64 | [See latest Linux release assets](https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.19) |
 
 Additional release files:
-- [Latest release page](https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.18)
-- [checksums.txt](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.18/checksums.txt)
+- [Latest release page](https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.19)
+- [checksums.txt](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.19/checksums.txt)
 
 ## Product overview
 
@@ -131,4 +131,5 @@ Local AI Control Center je lokalni desktop control layer za pokretanje i upravlj
 This repository is now maintained as a public installer-first release line. The current goal is not just to build the UI, but to ship a real local AI product that non-technical users can install with a guided flow.
 
 Ovaj repo se sada vodi kao javna installer-first release linija. Cilj nije samo da UI radi, nego da isporuči stvaran lokalni AI proizvod koji i netehnički korisnik može da instalira kroz vođeni tok.
+
 

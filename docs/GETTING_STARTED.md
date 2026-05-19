@@ -9,7 +9,7 @@
 - Ubuntu arm64: `.run`
 
 Use the latest public release:
-- [v2.24.18](https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.18)
+- [v2.24.19](https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.19)
 
 ### 2. Run the installer
 
@@ -37,7 +37,7 @@ After install, open Local AI Control Center and verify:
 - Ubuntu arm64: `.run`
 
 Koristi latest public release:
-- [v2.24.18](https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.18)
+- [v2.24.19](https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.19)
 
 ### 2. Pokreni installer
 
@@ -55,4 +55,3 @@ Posle instalacije otvori Local AI Control Center i proveri:
 - runtime status
 - OpenCode status
 - izabrani model
-

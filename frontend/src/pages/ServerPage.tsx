@@ -24,6 +24,10 @@ export function ServerPage() {
     try {
       const actionResult = await action();
       setResult(actionResult);
+      const details = actionResult.details as { url?: string } | undefined;
+      if (actionResult.status === "ok" && actionResult.action === "open-server-web" && details?.url) {
+        window.open(details.url, "_blank", "noopener,noreferrer");
+      }
       await loadStatus();
     } catch (reason: unknown) {
       const message = reason instanceof Error ? reason.message : "Nepoznata greska";

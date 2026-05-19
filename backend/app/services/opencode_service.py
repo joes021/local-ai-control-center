@@ -202,7 +202,7 @@ def open_opencode(profile: str = "") -> dict[str, object]:
     args: list[str] = []
     if profile:
         args.extend(["-Profile", profile])
-    completed = _run_powershell_file(script_path, args)
+    completed = _run_windows_interactive_launcher(script_path, args, task_name="LocalAIControlCenterOpenCodeInteractive")
     if completed.returncode != 0:
         return _result(
             "error",
@@ -220,6 +220,38 @@ def open_opencode(profile: str = "") -> dict[str, object]:
             "stderr": "",
         },
     }
+
+
+def _run_windows_interactive_launcher(
+    script_path: Path,
+    args: list[str],
+    *,
+    task_name: str,
+) -> subprocess.CompletedProcess[str]:
+    argument_parts = [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        f'"{script_path}"',
+        *[_powershell_argument(value) for value in args],
+    ]
+    argument_line = " ".join(argument_parts)
+    escaped_argument_line = argument_line.replace("'", "''")
+    command = (
+        "$ErrorActionPreference='Stop'; "
+        "$taskUser=(whoami); "
+        "$psPath=Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'; "
+        f"$taskName='{task_name}'; "
+        f"$taskArgs='{escaped_argument_line}'; "
+        "$action=New-ScheduledTaskAction -Execute $psPath -Argument $taskArgs; "
+        "$principal=New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Limited; "
+        "$settings=New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -StartWhenAvailable; "
+        "Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings -Force | Out-Null; "
+        "Start-ScheduledTask -TaskName $taskName; "
+        "Write-Output ('Interactive task started: ' + $taskName)"
+    )
+    return _run_powershell_command(command)
 
 
 def _load_agent_meta() -> dict[str, object]:
@@ -518,6 +550,13 @@ def _run_powershell_file(script_path: Path, args: list[str]) -> subprocess.Compl
         errors="replace",
         check=False,
     )
+
+
+def _powershell_argument(value: str) -> str:
+    escaped = str(value).replace('"', '\\"')
+    if any(ch.isspace() for ch in escaped) or "\\" in escaped or ":" in escaped:
+        return f'"{escaped}"'
+    return escaped
 
 
 def _result(

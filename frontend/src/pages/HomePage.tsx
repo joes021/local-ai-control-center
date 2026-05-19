@@ -49,8 +49,30 @@ export function HomePage() {
     }
   }
 
+  async function runAction(action: () => Promise<ActionResult>) {
+    try {
+      const actionResult = await action();
+      setResult(actionResult);
+      await loadStatus();
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "Nepoznata greska");
+    }
+  }
+
   useEffect(() => {
+    let active = true;
     void loadStatus();
+
+    const timer = window.setInterval(() => {
+      if (active) {
+        void loadStatus();
+      }
+    }, 5000);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, []);
 
   const serverWarning = serverStatus?.warningSummary || "";
@@ -90,11 +112,7 @@ export function HomePage() {
         <div className="inline-actions compact-actions">
           <button
             type="button"
-            onClick={async () => {
-              const actionResult = await openOpenCode(status?.profile || opencode?.profile || "balanced");
-              setResult(actionResult);
-              await loadStatus();
-            }}
+            onClick={() => void runAction(() => openOpenCode(status?.profile || opencode?.profile || "balanced"))}
           >
             Open OpenCode
           </button>

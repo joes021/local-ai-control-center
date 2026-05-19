@@ -1,3 +1,10 @@
+v2.24.19
+========
+
+- `Open OpenCode` iz web portala na Windowsu sada koristi interaktivni scheduled-task launch, pa novi OpenCode prozor izlazi u korisnicku desktop sesiju umesto u Session 0.
+- `Home` i `OpenCode` stranice sada periodično osvežavaju status, pa portal vise ne ostaje zalepljen na starom `offline` / `Nedostupan` stanju kada su runtime i OpenCode vec zdravi.
+- `Run llama.cpp web` iz portala sada otvara lokalni web URL direktno iz browser klika, umesto da zavisi samo od server-side Windows `Start-Process` toka.
+
 v2.24.18
 ========
 

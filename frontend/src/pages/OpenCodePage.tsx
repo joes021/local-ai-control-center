@@ -70,7 +70,19 @@ export function OpenCodePage() {
   }
 
   useEffect(() => {
+    let active = true;
     void loadStatus();
+
+    const timer = window.setInterval(() => {
+      if (active) {
+        void loadStatus();
+      }
+    }, 5000);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, []);
 
   const activePresetLabel = useMemo(() => {
@@ -106,9 +118,13 @@ export function OpenCodePage() {
           <button
             type="button"
             onClick={async () => {
-              const actionResult = await openOpenCode(opencode.profile || "balanced");
-              setResult(actionResult);
-              await loadStatus();
+              try {
+                const actionResult = await openOpenCode(opencode.profile || "balanced");
+                setResult(actionResult);
+                await loadStatus();
+              } catch (reason: unknown) {
+                setError(reason instanceof Error ? reason.message : "Nepoznata greska");
+              }
             }}
           >
             Open OpenCode

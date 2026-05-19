@@ -159,13 +159,33 @@ class OpenCodeServiceTests(unittest.TestCase):
         completed = mock.Mock(returncode=0, stdout="OpenCode je pokrenut.", stderr="")
         with (
             mock.patch.dict("os.environ", {"CONTROL_CENTER_NEXT_TARGET_PLATFORM": "windows"}, clear=False),
-            mock.patch.object(opencode_service, "_run_powershell_file", return_value=completed),
+            mock.patch.object(opencode_service, "_run_windows_interactive_launcher", return_value=completed) as launcher_mock,
             mock.patch.object(opencode_service, "_resolve_windows_launcher_script", return_value=Path(r"C:\demo\start-opencode.ps1")),
         ):
             result = opencode_service.open_opencode("balanced")
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["action"], "open-opencode")
+        launcher_mock.assert_called_once()
+
+    def test_run_windows_interactive_launcher_uses_interactive_scheduled_task(self):
+        from backend.app.services import opencode_service
+
+        completed = mock.Mock(returncode=0, stdout="ok", stderr="")
+        with mock.patch.object(opencode_service, "_run_powershell_command", return_value=completed) as command_mock:
+            result = opencode_service._run_windows_interactive_launcher(
+                Path(r"C:\demo\start-opencode.ps1"),
+                ["-Profile", "balanced"],
+                task_name="LocalAIControlCenterOpenCodeInteractive",
+            )
+
+        self.assertIs(result, completed)
+        command = command_mock.call_args.args[0]
+        self.assertIn("Register-ScheduledTask", command)
+        self.assertIn("Start-ScheduledTask", command)
+        self.assertIn("LogonType Interactive", command)
+        self.assertIn("LocalAIControlCenterOpenCodeInteractive", command)
+        self.assertIn("start-opencode.ps1", command)
 
     def test_open_opencode_on_linux_uses_terminal_launcher_and_script(self):
         from backend.app.services import opencode_service
