@@ -15,6 +15,7 @@ from backend.app.services.platform_config import get_target_platform
 from backend.app.services.script_runner import (
     run_launcher_by_platform,
     run_linux_launcher,
+    resolve_windows_launcher_path,
     run_windows_launcher,
 )
 
@@ -75,13 +76,58 @@ def start_server(*, local_qwen_home: Path | None = None) -> dict[str, object]:
     profile = str(settings.get("profile") or install_state.get("profile") or "balanced")
 
     if get_target_platform() == "windows":
-        return run_windows_launcher(
-            "start-server.ps1",
-            "-Profile",
-            profile,
-            "-WaitSeconds",
-            "90",
-        )
+        script_path = resolve_windows_launcher_path("start-server.ps1")
+        if not script_path.is_file():
+            return {
+                "status": "error",
+                "action": "start-server.ps1",
+                "summary": f"Skripta nije pronadjena: {script_path}",
+                "details": {
+                    "returncode": 1,
+                    "stdout": "",
+                    "stderr": f"Skripta nije pronadjena: {script_path}",
+                },
+            }
+        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        try:
+            subprocess.Popen(  # noqa: S603
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(script_path),
+                    "-Profile",
+                    profile,
+                    "-WaitSeconds",
+                    "90",
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=creation_flags,
+            )
+        except OSError as exc:
+            return {
+                "status": "error",
+                "action": "start-server.ps1",
+                "summary": str(exc),
+                "details": {
+                    "returncode": 1,
+                    "stdout": "",
+                    "stderr": str(exc),
+                },
+            }
+        return {
+            "status": "ok",
+            "action": "start-server.ps1",
+            "summary": f"Pokretanje llama.cpp servera je poslato za profil {profile}. Status ce se osveziti automatski.",
+            "details": {
+                "returncode": 0,
+                "stdout": "",
+                "stderr": "",
+            },
+        }
     return run_linux_launcher("start-server.sh", profile)
 
 

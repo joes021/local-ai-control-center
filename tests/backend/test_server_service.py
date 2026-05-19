@@ -121,7 +121,7 @@ class ServerServiceTests(unittest.TestCase):
         self.assertEqual(payload["warningSeverity"], "warning")
         self.assertIn("Health endpoint nije dostupan", payload["warningSummary"])
 
-    def test_start_server_uses_windows_launcher_with_profile_and_wait(self):
+    def test_start_server_spawns_windows_launcher_without_blocking(self):
         from backend.app.services.server_service import start_server
 
         with TemporaryDirectory() as tmp:
@@ -141,19 +141,20 @@ class ServerServiceTests(unittest.TestCase):
                 return_value="windows",
             ):
                 with patch(
-                    "backend.app.services.server_service.run_windows_launcher",
-                    return_value={"status": "ok", "action": "start-server.ps1", "summary": "started"},
-                ) as runner:
-                    result = start_server(local_qwen_home=home)
+                    "backend.app.services.server_service.resolve_windows_launcher_path",
+                    return_value=home / "launchers" / "start-server.ps1",
+                ):
+                    (home / "launchers").mkdir(parents=True)
+                    (home / "launchers" / "start-server.ps1").write_text("Write-Output 'ok'", encoding="utf-8")
+                    with patch("backend.app.services.server_service.subprocess.Popen") as popen_mock:
+                        result = start_server(local_qwen_home=home)
 
         self.assertEqual(result["status"], "ok")
-        runner.assert_called_once_with(
-            "start-server.ps1",
-            "-Profile",
-            "balanced",
-            "-WaitSeconds",
-            "90",
-        )
+        self.assertIn("Pokretanje llama.cpp servera je poslato", result["summary"])
+        self.assertTrue(popen_mock.called)
+        command = popen_mock.call_args.args[0]
+        self.assertTrue(any(str(item).endswith("start-server.ps1") for item in command))
+        self.assertIn("balanced", command)
 
     def test_stop_server_uses_platform_launcher(self):
         from backend.app.services.server_service import stop_server

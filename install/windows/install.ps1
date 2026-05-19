@@ -730,6 +730,24 @@ function Find-HealthyRuntimePort {
     return $null
 }
 
+function Get-DetectedGpuMemoryMiBForInstaller {
+    try {
+        $controllers = Get-CimInstance Win32_VideoController -ErrorAction Stop |
+            Where-Object { $_.AdapterRAM -and [int64]$_.AdapterRAM -gt 0 }
+        if (-not $controllers) {
+            return 0
+        }
+        $maxBytes = ($controllers | Measure-Object -Property AdapterRAM -Maximum).Maximum
+        if (-not $maxBytes) {
+            return 0
+        }
+        return [int][math]::Floor(([double]$maxBytes) / 1MB)
+    }
+    catch {
+        return 0
+    }
+}
+
 function Get-RunningRuntimeInfo {
     $healthyPort = Find-HealthyRuntimePort
     $processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
@@ -1043,15 +1061,41 @@ function Update-InstallStateAndSettings {
     }
     Write-JsonFile -Path $installStatePath -Payload $installState
 
+    $detectedGpuMiB = Get-DetectedGpuMemoryMiBForInstaller
+    $defaultContextSize = 262144
+    $defaultMaxOutputTokens = 8192
+    $defaultContextCustomized = $false
+    $defaultMaxOutputCustomized = $false
+    if ($detectedGpuMiB -gt 0) {
+        if ($detectedGpuMiB -le 8192) {
+            $defaultContextSize = 4096
+            $defaultMaxOutputTokens = 2048
+            $defaultContextCustomized = $true
+            $defaultMaxOutputCustomized = $true
+        }
+        elseif ($detectedGpuMiB -le 12288) {
+            $defaultContextSize = 8192
+            $defaultMaxOutputTokens = 2048
+            $defaultContextCustomized = $true
+            $defaultMaxOutputCustomized = $true
+        }
+        else {
+            $defaultContextSize = 16384
+            $defaultMaxOutputTokens = 4096
+            $defaultContextCustomized = $true
+            $defaultMaxOutputCustomized = $true
+        }
+    }
+
     $settingsPayload = [ordered]@{
         edition = if ($existingSettings -and $existingSettings.edition) { [string]$existingSettings.edition } else { $Edition }
         profile = if ($existingSettings -and $existingSettings.profile) { [string]$existingSettings.profile } else { $Profile }
         accessMode = $AccessMode
         llama = [ordered]@{
-            contextSize = if ($existingSettings -and $existingSettings.llama -and $existingSettings.llama.contextSize) { [int]$existingSettings.llama.contextSize } else { 262144 }
-            maxOutputTokens = if ($existingSettings -and $existingSettings.llama -and $existingSettings.llama.maxOutputTokens) { [int]$existingSettings.llama.maxOutputTokens } else { 8192 }
-            contextSizeCustomized = if ($existingSettings -and $existingSettings.llama) { [bool]$existingSettings.llama.contextSizeCustomized } else { $false }
-            maxOutputTokensCustomized = if ($existingSettings -and $existingSettings.llama) { [bool]$existingSettings.llama.maxOutputTokensCustomized } else { $false }
+            contextSize = if ($existingSettings -and $existingSettings.llama -and $existingSettings.llama.contextSize) { [int]$existingSettings.llama.contextSize } else { $defaultContextSize }
+            maxOutputTokens = if ($existingSettings -and $existingSettings.llama -and $existingSettings.llama.maxOutputTokens) { [int]$existingSettings.llama.maxOutputTokens } else { $defaultMaxOutputTokens }
+            contextSizeCustomized = if ($existingSettings -and $existingSettings.llama) { [bool]$existingSettings.llama.contextSizeCustomized } else { $defaultContextCustomized }
+            maxOutputTokensCustomized = if ($existingSettings -and $existingSettings.llama) { [bool]$existingSettings.llama.maxOutputTokensCustomized } else { $defaultMaxOutputCustomized }
         }
         opencode = [ordered]@{
             buildSteps = if ($existingSettings -and $existingSettings.opencode -and $existingSettings.opencode.buildSteps) { [int]$existingSettings.opencode.buildSteps } else { 120 }
@@ -1088,8 +1132,19 @@ function Start-LegacyRuntimeIfNeeded {
         return $null
     }
 
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $startServerScript -Profile $Profile | Out-Null
-    return Find-HealthyRuntimePort
+    Start-Process -FilePath (Get-WindowsPowerShellExe) `
+        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $startServerScript, "-Profile", $Profile) `
+        -WindowStyle Hidden | Out-Null
+
+    for ($i = 0; $i -lt 45; $i++) {
+        $healthyPort = Find-HealthyRuntimePort
+        if ($healthyPort) {
+            return $healthyPort
+        }
+        Start-Sleep -Seconds 2
+    }
+
+    return $null
 }
 
 function Stop-ExistingControlCenter {
@@ -1411,4 +1466,5 @@ if ($failedCore.Count -gt 0) {
 }
 
 Write-InstallLogLine "Installer finished successfully."
+exit 0
 

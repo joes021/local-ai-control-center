@@ -1,3 +1,10 @@
+v2.24.22
+========
+
+- Windows installer no longer blocks on a synchronous runtime start, so setup can reach Finish instead of hanging after model bootstrap.
+- Windows OpenCode launch now chooses direct interactive launch when the backend already runs in the logged-in desktop session, and only falls back to scheduled-task launch from Session 0 style contexts.
+- Fresh Windows install seeds lower-RAM startup settings for small GPU classes so OpenCode does not immediately inherit the overly strict 1024 output-token cap.
+
 v2.24.20
 ========
 

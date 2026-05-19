@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
+from ctypes import byref, c_uint, windll
 from pathlib import Path
 
 from backend.app.services.local_qwen_paths import detect_local_qwen_home, detect_local_qwen_repo_fallback
@@ -202,7 +204,10 @@ def open_opencode(profile: str = "") -> dict[str, object]:
     args: list[str] = []
     if profile:
         args.extend(["-Profile", profile])
-    completed = _run_windows_interactive_launcher(script_path, args, task_name="LocalAIControlCenterOpenCodeInteractive")
+    if _current_windows_session_id() > 0:
+        completed = _run_powershell_file(script_path, args)
+    else:
+        completed = _run_windows_interactive_launcher(script_path, args, task_name="LocalAIControlCenterOpenCodeInteractive")
     if completed.returncode != 0:
         return _result(
             "error",
@@ -220,6 +225,16 @@ def open_opencode(profile: str = "") -> dict[str, object]:
             "stderr": "",
         },
     }
+
+
+def _current_windows_session_id() -> int:
+    if get_target_platform() != "windows":
+        return -1
+    session_id = c_uint(0)
+    success = windll.kernel32.ProcessIdToSessionId(c_uint(os.getpid()), byref(session_id))
+    if success == 0:
+        return -1
+    return int(session_id.value)
 
 
 def _run_windows_interactive_launcher(

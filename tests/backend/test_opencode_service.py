@@ -159,6 +159,7 @@ class OpenCodeServiceTests(unittest.TestCase):
         completed = mock.Mock(returncode=0, stdout="OpenCode je pokrenut.", stderr="")
         with (
             mock.patch.dict("os.environ", {"CONTROL_CENTER_NEXT_TARGET_PLATFORM": "windows"}, clear=False),
+            mock.patch.object(opencode_service, "_current_windows_session_id", return_value=0),
             mock.patch.object(opencode_service, "_run_windows_interactive_launcher", return_value=completed) as launcher_mock,
             mock.patch.object(opencode_service, "_resolve_windows_launcher_script", return_value=Path(r"C:\demo\start-opencode.ps1")),
         ):
@@ -186,6 +187,23 @@ class OpenCodeServiceTests(unittest.TestCase):
         self.assertIn("LogonType Interactive", command)
         self.assertIn("LocalAIControlCenterOpenCodeInteractive", command)
         self.assertIn("start-opencode.ps1", command)
+
+    def test_open_opencode_in_interactive_session_uses_direct_powershell_launch(self):
+        from backend.app.services import opencode_service
+
+        completed = mock.Mock(returncode=0, stdout="OpenCode je pokrenut.", stderr="")
+        with (
+            mock.patch.dict("os.environ", {"CONTROL_CENTER_NEXT_TARGET_PLATFORM": "windows"}, clear=False),
+            mock.patch.object(opencode_service, "_current_windows_session_id", return_value=1),
+            mock.patch.object(opencode_service, "_run_powershell_file", return_value=completed) as direct_mock,
+            mock.patch.object(opencode_service, "_run_windows_interactive_launcher") as scheduled_mock,
+            mock.patch.object(opencode_service, "_resolve_windows_launcher_script", return_value=Path(r"C:\demo\start-opencode.ps1")),
+        ):
+            result = opencode_service.open_opencode("balanced")
+
+        self.assertEqual(result["status"], "ok")
+        direct_mock.assert_called_once()
+        scheduled_mock.assert_not_called()
 
     def test_open_opencode_on_linux_uses_terminal_launcher_and_script(self):
         from backend.app.services import opencode_service

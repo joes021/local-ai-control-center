@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { ActionResultPanel } from "../components/ActionResultPanel";
 import { StatusCard } from "../components/StatusCard";
-import { fetchServerStatus, openServerWeb, startServer, stopServer } from "../lib/api";
+import { fetchServerStatus, startServer, stopServer } from "../lib/api";
 import type { ActionResult, ServerStatusPayload } from "../lib/types";
 
 export function ServerPage() {
@@ -24,15 +24,22 @@ export function ServerPage() {
     try {
       const actionResult = await action();
       setResult(actionResult);
-      const details = actionResult.details as { url?: string } | undefined;
-      if (actionResult.status === "ok" && actionResult.action === "open-server-web" && details?.url) {
-        window.open(details.url, "_blank", "noopener,noreferrer");
-      }
       await loadStatus();
     } catch (reason: unknown) {
       const message = reason instanceof Error ? reason.message : "Nepoznata greska";
       setError(message);
     }
+  }
+
+  function openServerWebNow() {
+    const url = serverStatus?.localWebUrl || serverStatus?.webUrl || "http://127.0.0.1:8091/";
+    window.open(url, "_blank", "noopener,noreferrer");
+    setResult({
+      status: "ok",
+      action: "open-server-web",
+      summary: `Otvoren llama.cpp web: ${url}`,
+      details: { returncode: 0, stdout: url, stderr: "" },
+    });
   }
 
   useEffect(() => {
@@ -75,7 +82,7 @@ export function ServerPage() {
           <button type="button" onClick={() => void runAction(stopServer)}>
             Stop llama.cpp server
           </button>
-          <button type="button" onClick={() => void runAction(openServerWeb)}>
+          <button type="button" onClick={openServerWebNow}>
             Run llama.cpp web
           </button>
         </div>
