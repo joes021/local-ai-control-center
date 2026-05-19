@@ -1,3 +1,10 @@
+v2.24.25
+========
+
+- Windows installer sada vise ne skriva PowerShell install tok, pa korisnik vidi sta se proverava, sta se instalira i gde eventualno puca.
+- TurboQuant status je razbijen na stvarne dijagnosticke razloge kao sto su `missing-nvcc`, `missing-cmake`, `clone-failed`, `configure-failed` i `build-failed`.
+- Installer summary i install report sada eksplicitno prikazuju i `TurboQuant explanation`, umesto da ostanu na mutnom `not-installed`.
+
 v2.24.24
 ========
 

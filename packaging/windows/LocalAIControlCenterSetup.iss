@@ -310,7 +310,7 @@ begin
     wpFinished,
     'Installer summary',
     'Review the Windows setup result',
-    'Read the installer output before pressing Finish.',
+    'Read the installer output before pressing Finish. Install log and TurboQuant explanation are included below.',
     ''
   );
 end;
@@ -349,7 +349,7 @@ begin
       ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
       GetInstallScriptParameters(),
       ExpandConstant('{app}'),
-      SW_HIDE,
+      SW_SHOWNORMAL,
       ewWaitUntilTerminated,
       ResultCode
     );

@@ -25,6 +25,7 @@ class WindowsInstallerBuilderTests(unittest.TestCase):
         self.assertNotIn("default follows defaultModelId from the shared catalog", content)
         self.assertIn("gemma-4-e4b-it-q4-0", content)
         self.assertIn("install-summary.txt", content)
+        self.assertIn("TurboQuant explanation", content)
         self.assertIn("support\\launcher\\windows", content)
         self.assertIn("function GetModelField(ModelIndex: Integer; FieldName: string): string;", content)
         self.assertIn("function GetSelectedModelIndex(): Integer;", content)
@@ -57,6 +58,11 @@ class WindowsInstallerBuilderTests(unittest.TestCase):
         self.assertIn('Copy-FolderContent -Source (Get-WorkspaceSeedSource -PrimaryRelativePath "support\\scripts" -FallbackRelativePath "scripts") -Destination (Join-Path $workspaceRoot "scripts")', content)
         self.assertIn('Copy-FolderContent -Source (Get-WorkspaceSeedSource -PrimaryRelativePath "support\\assets\\icons" -FallbackRelativePath "assets\\icons") -Destination (Join-Path $workspaceRoot "assets\\icons")', content)
         self.assertIn("install.log", content)
+        self.assertIn("turboQuantRuntime = @{", content)
+        self.assertIn("reason = $turboInfo.reason", content)
+        self.assertIn("details = $turboInfo.details", content)
+        self.assertIn("TurboQuant explanation: $($Components.turboQuantRuntime.reason)", content)
+        self.assertIn('Write-Host "TurboQuant detail: $($components.turboQuantRuntime.reason)"', content)
         self.assertIn("Next step:", content)
         self.assertIn("function Find-ExistingExecutablePath", content)
         self.assertIn('Join-Path $env:LOCALAPPDATA "Programs\\Python\\Python312\\python.exe"', content)
@@ -124,6 +130,7 @@ class WindowsInstallerBuilderTests(unittest.TestCase):
         content = (ROOT / "packaging" / "windows" / "LocalAIControlCenterSetup.iss").read_text(encoding="utf-8")
         self.assertIn("LocalAIControlCenter", content)
         self.assertNotIn("LocalQwenHome", content)
+        self.assertIn("SW_SHOWNORMAL", content)
 
 
 if __name__ == "__main__":

@@ -639,24 +639,91 @@ function Ensure-LlamaCpp {
 
 function Ensure-TurboQuant {
     if ($SkipTurboQuant) {
-        return @{ status = "skipped"; path = "" }
+        return @{ status = "skipped"; path = ""; reason = "TurboQuant je iskljucen u installer izboru."; details = @() }
     }
     $target = Join-Path $appsDir "llama.cpp-turboquant"
-    if (-not (Test-Path $target)) {
-        git clone https://github.com/TheTom/llama-cpp-turboquant.git $target | Out-Null
+    $details = New-Object System.Collections.Generic.List[string]
+    $details.Add("Target: $target") | Out-Null
+    if (Test-Path $target) {
+        $details.Add("Repo vec postoji.") | Out-Null
+    } else {
+        $details.Add("Repo ne postoji, pokusavam git clone.") | Out-Null
+        & git clone https://github.com/TheTom/llama-cpp-turboquant.git $target | Out-Null
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $target)) {
+            return @{
+                status = "clone-failed"
+                path = ""
+                reason = "TurboQuant repo nije uspesno kloniran."
+                details = $details
+            }
+        }
+        $details.Add("Git clone uspesan.") | Out-Null
     }
     $turboExe = Join-Path $target "build-cuda\bin\llama-server.exe"
-    if (-not (Test-Path $turboExe) -and (Get-Command cmake -ErrorAction SilentlyContinue) -and (Get-Command nvcc -ErrorAction SilentlyContinue)) {
-        $generator = if (Get-Command ninja -ErrorAction SilentlyContinue) { "Ninja" } else { "Visual Studio 17 2022" }
-        & cmake -G $generator -S $target -B (Join-Path $target "build-cuda") -DGGML_CUDA=ON | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            & cmake --build (Join-Path $target "build-cuda") --config Release -j | Out-Null
+    if (Test-Path $turboExe) {
+        $details.Add("TurboQuant binar je vec prisutan.") | Out-Null
+        return @{ status = "present"; path = $target; reason = "TurboQuant binar je pronadjen i spreman."; details = $details }
+    }
+
+    $cmakeCmd = Get-Command cmake -ErrorAction SilentlyContinue
+    $nvccCmd = Get-Command nvcc -ErrorAction SilentlyContinue
+    if (-not $cmakeCmd) {
+        $details.Add("cmake nije pronadjen u PATH-u.") | Out-Null
+        return @{
+            status = "missing-cmake"
+            path = ""
+            reason = "TurboQuant build nije moguc jer cmake nije dostupan."
+            details = $details
         }
     }
-    if (Test-Path $turboExe) {
-        return @{ status = "present"; path = $target }
+    if (-not $nvccCmd) {
+        $details.Add("nvcc nije pronadjen u PATH-u.") | Out-Null
+        return @{
+            status = "missing-nvcc"
+            path = ""
+            reason = "TurboQuant build nije moguc jer CUDA nvcc nije dostupan."
+            details = $details
+        }
     }
-    return @{ status = "not-installed"; path = "" }
+
+    $generator = if (Get-Command ninja -ErrorAction SilentlyContinue) { "Ninja" } else { "Visual Studio 17 2022" }
+    $buildDir = Join-Path $target "build-cuda"
+    $details.Add("Generator: $generator") | Out-Null
+    $details.Add("Build dir: $buildDir") | Out-Null
+    & cmake -G $generator -S $target -B $buildDir -DGGML_CUDA=ON | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        $details.Add("cmake configure je vratio non-zero exit code.") | Out-Null
+        return @{
+            status = "configure-failed"
+            path = ""
+            reason = "TurboQuant configure korak nije uspeo."
+            details = $details
+        }
+    }
+
+    & cmake --build $buildDir --config Release -j | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        $details.Add("cmake build je vratio non-zero exit code.") | Out-Null
+        return @{
+            status = "build-failed"
+            path = ""
+            reason = "TurboQuant build korak nije uspeo."
+            details = $details
+        }
+    }
+
+    if (Test-Path $turboExe) {
+        $details.Add("TurboQuant build je proizveo llama-server.exe.") | Out-Null
+        return @{ status = "present"; path = $target; reason = "TurboQuant je uspesno buildovan i spreman."; details = $details }
+    }
+
+    $details.Add("Build je zavrsen bez pronadjenog binara.") | Out-Null
+    return @{
+        status = "not-installed"
+        path = ""
+        reason = "TurboQuant nije ostavio startabilan binar posle build koraka."
+        details = $details
+    }
 }
 
 function Write-LaunchWrapper {
@@ -1297,6 +1364,7 @@ function Write-InstallSummary {
         "llama.cpp: $(if ($Components.llamaCppRuntime.ok) { 'OK' } else { 'FAILED' })",
         "OpenCode: $(if ($Components.openCode.ok) { 'OK' } else { 'FAILED' })",
         "TurboQuant: $($Components.turboQuantRuntime.status)",
+        "TurboQuant explanation: $($Components.turboQuantRuntime.reason)",
         "Runtime port: $(if ($RuntimePort) { $RuntimePort } else { 'nije potvrdjen' })",
         "Install root: $workspaceRoot",
         "Launcher: $launchWrapper"
@@ -1389,7 +1457,10 @@ try {
     $llamaReady = -not [string]::IsNullOrWhiteSpace($llamaPath)
     Write-InstallLogLine "Component check: llamaReady=$llamaReady path=$llamaPath"
     $turboInfo = Ensure-TurboQuant
-    Write-InstallLogLine "Component check: TurboQuant=$($turboInfo.status)"
+    Write-InstallLogLine "Component check: TurboQuant=$($turboInfo.status) reason=$($turboInfo.reason)"
+    foreach ($detailLine in ($turboInfo.details | Where-Object { $_ })) {
+        Write-InstallLogLine "TurboQuant detail: $detailLine"
+    }
 }
 catch {
     $exceptionSummary = Get-ExceptionSummary -Exception $_.Exception
@@ -1434,7 +1505,13 @@ $components = [ordered]@{
     controlCenter = @{ ok = (Test-Path (Join-Path $appRoot "frontend\dist\index.html")); path = $appRoot; started = $controlCenterStart.Started; url = $controlCenterStart.Url }
     llamaCppRuntime = @{ ok = $llamaComponentReady; path = $effectiveLlamaPath }
     openCode = @{ ok = $opencodeReady; path = if ($opencodeReady) { (Resolve-OpenCodePath) } else { "" } }
-    turboQuantRuntime = @{ ok = ($turboInfo.status -eq "present"); path = $effectiveTurboPath; status = $turboInfo.status }
+    turboQuantRuntime = @{
+        ok = ($turboInfo.status -eq "present")
+        path = $effectiveTurboPath
+        status = $turboInfo.status
+        reason = $turboInfo.reason
+        details = $turboInfo.details
+    }
     modelBootstrap = $modelBootstrapState.modelBootstrap
     firstRunProbe = [ordered]@{
         status = $firstRunProbeState.firstRunProbe.status
@@ -1472,6 +1549,7 @@ Write-Host "Control Center: $($components.controlCenter.ok)"
 Write-Host "llama.cpp: $($components.llamaCppRuntime.ok)"
 Write-Host "OpenCode: $($components.openCode.ok)"
 Write-Host "TurboQuant: $($components.turboQuantRuntime.status)"
+Write-Host "TurboQuant detail: $($components.turboQuantRuntime.reason)"
 Write-Host "Access mode: $AccessMode"
 Write-Host "Install root: $workspaceRoot"
 Write-Host "Launcher: $launchWrapper"
