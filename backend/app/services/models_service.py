@@ -217,6 +217,10 @@ def activate_model(model_id: str) -> dict[str, object]:
         return ensure_result
     result = run_linux_launcher("manage-models.sh", "use", model_id)
     if result.get("status") != "ok":
+        fallback_result = _activate_detected_local_model_linux(model_id)
+        if fallback_result is not None:
+            result = fallback_result
+    if result.get("status") != "ok":
         return result
 
     override = load_model_override_payload(model_id)
@@ -247,6 +251,71 @@ def activate_model(model_id: str) -> dict[str, object]:
         else:
             return apply_result
     return result
+
+
+def _candidate_local_model_paths(model_id: str, *, home: Path | None = None) -> list[Path]:
+    base_home = home or detect_local_qwen_home()
+    token = str(model_id or "").strip()
+    if not token:
+        return []
+
+    path_token = Path(token).expanduser()
+    candidates: list[Path] = []
+    seen: set[str] = set()
+    search_roots = [
+        base_home / "models",
+        Path.home() / "models",
+        Path.home() / "models" / "llama-cpp",
+        Path.home() / "llama.cpp" / "models",
+        Path.home() / "local-qwen-home" / "models",
+    ]
+
+    if path_token.is_absolute():
+        search_roots.insert(0, path_token.parent)
+        direct_candidate = path_token
+        key = str(direct_candidate)
+        if key not in seen:
+            seen.add(key)
+            candidates.append(direct_candidate)
+
+    for root in search_roots:
+        candidate = root / path_token.name
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append(candidate)
+
+    return candidates
+
+
+def _activate_detected_local_model_linux(model_id: str) -> dict[str, object] | None:
+    home = detect_local_qwen_home()
+    install_state_path = home / "state" / "install-state.json"
+    install_state = read_json_file(install_state_path)
+    candidate_path = next((path for path in _candidate_local_model_paths(model_id, home=home) if path.is_file()), None)
+    if candidate_path is None:
+        return None
+
+    install_state["modelId"] = str(model_id)
+    install_state["modelFile"] = str(candidate_path)
+    install_state_path.parent.mkdir(parents=True, exist_ok=True)
+    install_state_path.write_text(json.dumps(install_state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    configure_result = run_linux_launcher("configure-settings.sh")
+    if configure_result.get("status") != "ok":
+        return configure_result
+
+    return {
+        "status": "ok",
+        "action": "activate-detected-local-model",
+        "summary": f"Model postavljen na: {model_id}",
+        "details": {
+            "returncode": 0,
+            "stdout": f"Model path: {candidate_path}\n{configure_result.get('details', {}).get('stdout', '')}".strip(),
+            "stderr": configure_result.get("details", {}).get("stderr", ""),
+        },
+    }
 
 
 def download_model(model_id: str) -> dict[str, object]:

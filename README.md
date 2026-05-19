@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.11"><img src="https://img.shields.io/badge/release-v2.24.11-C9972B?style=for-the-badge" alt="Latest release"></a>
+  <a href="https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.12"><img src="https://img.shields.io/badge/release-v2.24.12-C9972B?style=for-the-badge" alt="Latest release"></a>
   <a href="https://github.com/joes021/local-ai-control-center/releases"><img src="https://img.shields.io/badge/download-installers-4B3B2B?style=for-the-badge" alt="Download installers"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Ubuntu%20x86__64%20%7C%20Ubuntu%20arm64-6C5430?style=for-the-badge" alt="Platforms">
   <img src="https://img.shields.io/badge/status-public%20v1-2F6B4F?style=for-the-badge" alt="Status">
@@ -21,14 +21,14 @@
 
 | Platform | Direct download |
 | --- | --- |
-| Windows | [Local-AI-Control-Center-Setup-2.24.11.exe](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.11/Local-AI-Control-Center-Setup-2.24.11.exe) |
-| Ubuntu x86_64 | [Local-AI-Control-Center-Setup-linux-x86_64-2.24.11.run](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.11/Local-AI-Control-Center-Setup-linux-x86_64-2.24.11.run) |
-| Ubuntu arm64 | [Local-AI-Control-Center-Setup-linux-arm64-2.24.11.run](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.11/Local-AI-Control-Center-Setup-linux-arm64-2.24.11.run) |
+| Windows | [Local-AI-Control-Center-Setup-2.24.12.exe](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.12/Local-AI-Control-Center-Setup-2.24.12.exe) |
+| Ubuntu x86_64 | [Local-AI-Control-Center-Setup-linux-x86_64-2.24.12.run](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.12/Local-AI-Control-Center-Setup-linux-x86_64-2.24.12.run) |
+| Ubuntu arm64 | [Local-AI-Control-Center-Setup-linux-arm64-2.24.12.run](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.12/Local-AI-Control-Center-Setup-linux-arm64-2.24.12.run) |
 
 Additional release files:
-- [Latest release page](https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.11)
-- [checksums.txt](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.11/checksums.txt)
-- [support-matrix.json](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.11/support-matrix.json)
+- [Latest release page](https://github.com/joes021/local-ai-control-center/releases/tag/v2.24.12)
+- [checksums.txt](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.12/checksums.txt)
+- [support-matrix.json](https://github.com/joes021/local-ai-control-center/releases/download/v2.24.12/support-matrix.json)
 
 ## Product overview
 

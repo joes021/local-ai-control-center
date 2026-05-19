@@ -267,6 +267,54 @@ class ModelsServiceTests(unittest.TestCase):
         self.assertTrue(entry["installed"])
         self.assertAlmostEqual(entry["installedSizeGiB"], 0.0, places=2)
 
+    def test_activate_model_falls_back_to_detected_local_file_when_launcher_cannot_resolve_id(self):
+        from backend.app.services import models_service
+
+        with TemporaryDirectory() as tmp:
+            fake_home = Path(tmp)
+            state_dir = fake_home / "state"
+            llama_models_dir = fake_home / "models" / "llama-cpp"
+            state_dir.mkdir(parents=True)
+            llama_models_dir.mkdir(parents=True)
+            target_model = llama_models_dir / "Qwen3.6-35B-A3B-MXFP4_MOE.gguf"
+            target_model.write_bytes(b"demo")
+            (state_dir / "install-state.json").write_text(
+                json.dumps({"modelId": "old.gguf", "modelFile": "/tmp/old.gguf"}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
+            with (
+                mock.patch.object(models_service, "detect_local_qwen_home", return_value=fake_home),
+                mock.patch.object(
+                    models_service,
+                    "run_linux_launcher",
+                    side_effect=[
+                        {
+                            "status": "error",
+                            "action": "manage-models.sh",
+                            "summary": "Model nije pronadjen: Qwen3.6-35B-A3B-MXFP4_MOE.gguf",
+                            "details": {"returncode": 1, "stdout": "", "stderr": "missing"},
+                        },
+                        {
+                            "status": "ok",
+                            "action": "configure-settings.sh",
+                            "summary": "ok",
+                            "details": {"returncode": 0, "stdout": "configured", "stderr": ""},
+                        },
+                    ],
+                ),
+                mock.patch.object(Path, "home", return_value=fake_home),
+                mock.patch.dict("os.environ", {"CONTROL_CENTER_NEXT_TARGET_PLATFORM": "linux"}, clear=False),
+                mock.patch.object(models_service, "load_model_override_payload", return_value={}),
+                mock.patch.object(models_service, "load_global_defaults_payload", return_value={}),
+            ):
+                result = models_service.activate_model(target_model.name)
+
+            self.assertEqual(result["status"], "ok")
+            updated_state = json.loads((state_dir / "install-state.json").read_text(encoding="utf-8"))
+            self.assertEqual(updated_state["modelId"], target_model.name)
+            self.assertEqual(updated_state["modelFile"], str(target_model))
+
     def test_load_download_progress_payload_returns_idle_without_file(self):
         from backend.app.services import models_service
 

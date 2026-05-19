@@ -1,12 +1,15 @@
-v2.24.11
+v2.24.12
 ========
 
 - Fixed Hugging Face browser size detection by preserving repo slashes in tree API requests, so Browser table sizes now load instead of staying `Unknown`.
 - Fixed detected active local models outside the managed models folder so they appear as installed and active in the Models tab.
 - Fixed Linux installer payload to package the real legacy Linux launchers plus `install/shared`, and to copy shared `config/` and `scripts/` into the install root so Browser downloads, model activation, and OpenCode launchers work on Ubuntu installs.
 - Tightened Linux runtime readiness reporting when an already healthy runtime port is reused during install.
+- Fixed Linux launcher patching so Browser `Download` no longer writes a broken OpenCode `baseURL` expression.
+- Fixed Linux TUI installer so model selection writes a clean `selectedModelId` instead of capturing the visible menu text.
+- Added Linux fallback activation for detected local GGUF models that exist outside the managed models directory, so portal model switching can recover those real local files too.
 
-v2.24.10
+v2.24.11
 - Linux repo fallback sada sadrzi `show-logs.sh` i `local_qwen_common.sh`, pa Log Viewer vise ne pada na missing script.
 - Odrzana je kompatibilnost sa novim `~/local-ai-control-center` root-om i starim legacy root-om.
 

@@ -74,22 +74,22 @@ pick_guided_model_tui() {
   local selection entry model_id label vram_label description download_file index
 
   while true; do
-    echo
-    echo "Izaberi preporuceni model za prvi bootstrap korak:"
+    echo >&2
+    echo "Izaberi preporuceni model za prvi bootstrap korak:" >&2
     index=1
     for entry in "${RECOMMENDED_MODELS[@]}"; do
       IFS='|' read -r model_id label vram_label description download_file <<<"$entry"
       if [ "$model_id" = "$default_model_id" ]; then
         default_index="$index"
-        echo "  $index. $label [$vram_label] (defaultModelId)"
+        echo "  $index. $label [$vram_label] (defaultModelId)" >&2
       else
-        echo "  $index. $label [$vram_label]"
+        echo "  $index. $label [$vram_label]" >&2
       fi
-      echo "     MODEL_ID: $model_id"
-      echo "     $description"
+      echo "     MODEL_ID: $model_id" >&2
+      echo "     $description" >&2
       index=$((index + 1))
     done
-    echo "  m. Prikazi jos modela"
+    echo "  m. Prikazi jos modela" >&2
     read -r -p "Izbor modela [$default_index]: " selection
     selection="${selection:-$default_index}"
     case "${selection,,}" in
@@ -105,7 +105,7 @@ pick_guided_model_tui() {
         done
         ;;
       m)
-        echo "Prikazi jos modela: za sada installer vodi kroz 3 preporucena modela iz shared recommended-models.json payload-a. Sire model browse opcije dolaze u kasnijem model setup koraku."
+        echo "Prikazi jos modela: za sada installer vodi kroz 3 preporucena modela iz shared recommended-models.json payload-a. Sire model browse opcije dolaze u kasnijem model setup koraku." >&2
         ;;
       *)
         echo "Izaberi 1, 2, 3 ili m." >&2
