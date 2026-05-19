@@ -366,14 +366,12 @@ class ModelsServiceTests(unittest.TestCase):
         self.assertEqual(detected["filename"], "Qwen3.6-35B-A3B-UD-IQ2_XXS.gguf")
         self.assertEqual(detected["family"], "Qwen")
 
-    def test_detect_local_qwen_home_prefers_new_linux_path_but_falls_back_to_legacy(self):
+    def test_detect_local_qwen_home_prefers_new_linux_path(self):
         from backend.app.services import local_qwen_paths
 
         with TemporaryDirectory() as tmp:
             fake_home = Path(tmp)
             new_default = fake_home / "local-ai-control-center"
-            legacy_default = fake_home / "local-qwen-home"
-            legacy_default.mkdir()
 
             with (
                 mock.patch.dict("os.environ", {}, clear=True),
@@ -382,7 +380,7 @@ class ModelsServiceTests(unittest.TestCase):
             ):
                 detected = local_qwen_paths.detect_local_qwen_home()
 
-            self.assertEqual(detected, legacy_default)
+            self.assertEqual(detected, new_default)
 
             new_default.mkdir()
             with (

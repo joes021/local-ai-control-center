@@ -267,7 +267,6 @@ def _candidate_local_model_paths(model_id: str, *, home: Path | None = None) -> 
         Path.home() / "models",
         Path.home() / "models" / "llama-cpp",
         Path.home() / "llama.cpp" / "models",
-        Path.home() / "local-qwen-home" / "models",
     ]
 
     if path_token.is_absolute():

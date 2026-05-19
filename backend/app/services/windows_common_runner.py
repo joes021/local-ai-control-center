@@ -8,14 +8,23 @@ from backend.app.services.local_qwen_paths import detect_local_qwen_home, detect
 
 
 def resolve_windows_common_script() -> Path:
-    installed = detect_local_qwen_home() / "launchers" / "local-qwen-common.ps1"
-    if installed.is_file():
-        return installed
-    return detect_local_qwen_repo_fallback() / "launcher" / "windows" / "local-qwen-common.ps1"
+    install_root = detect_local_qwen_home()
+    installed_candidates = [install_root / "launchers" / "local-ai-control-center-common.ps1"]
+    for installed in installed_candidates:
+        if installed.is_file():
+            return installed
+
+    repo_root = detect_local_qwen_repo_fallback() / "launcher" / "windows"
+    repo_candidates = [repo_root / "local-ai-control-center-common.ps1"]
+    for candidate in repo_candidates:
+        if candidate.is_file():
+            return candidate
+    return repo_candidates[0]
 
 
 def resolve_windows_common_repo_script() -> Path:
-    return detect_local_qwen_repo_fallback() / "launcher" / "windows" / "local-qwen-common.ps1"
+    repo_root = detect_local_qwen_repo_fallback() / "launcher" / "windows"
+    return repo_root / "local-ai-control-center-common.ps1"
 
 
 def invoke_windows_common_json(function_name: str, *args: str) -> dict[str, object]:

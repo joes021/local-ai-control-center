@@ -2,9 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-. "$SCRIPT_DIR/local_qwen_common.sh"
+. "$SCRIPT_DIR/local_ai_control_center_common.sh"
 
-ROOT="$(get_local_qwen_root)"
+ROOT="$(get_local_ai_control_center_root)"
 LOG_DIR="$ROOT/logs"
 INSTALL_SUMMARY="$ROOT/state/install-summary.txt"
 INSTALL_REPORT="$ROOT/state/install-report.json"

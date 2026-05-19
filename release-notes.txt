@@ -1,3 +1,10 @@
+v2.24.18
+========
+
+- Windows installer i instalirani launcher payload sada ispravno prepoznaju `apps\llama.cpp\bin\llama-server.exe`, pa runtime vise ne ostaje “offline” odmah posle instalacije.
+- Windows OpenCode launch spec sada ume da koristi `opencode.ps1` i `opencode.exe` iz modernog npm layout-a, pa `Open OpenCode` iz portala vise ne ostaje nedostupan dok precica radi.
+- Windows runtime/status backend sada koristi pravi Windows process listing umesto Linux `ps -ef` fallback-a, pa portal ispravno prikazuje zdrav runtime i aktivan binar.
+
 v2.24.17
 ========
 

@@ -121,6 +121,41 @@ function New-StagingPayload {
     Copy-FolderIfExists -Source (Join-Path $SupportRepoRoot "assets\icons") -Destination (Join-Path $supportRoot "assets\icons")
     Copy-FolderIfExists -Source (Join-Path $SupportRepoRoot "launcher\windows") -Destination (Join-Path $supportRoot "launcher\windows")
 
+    $supportLauncherDir = Join-Path $supportRoot "launcher\windows"
+    $legacyCommon = Join-Path $supportLauncherDir "local-qwen-common.ps1"
+    $newCommon = Join-Path $supportLauncherDir "local-ai-control-center-common.ps1"
+    if ((Test-Path $legacyCommon) -and (-not (Test-Path $newCommon))) {
+        Move-Item -LiteralPath $legacyCommon -Destination $newCommon -Force
+    }
+
+    $legacyIcon = Join-Path $supportRoot "assets\icons\opencode-local-qwen.ico"
+    $newIcon = Join-Path $supportRoot "assets\icons\opencode-control-center.ico"
+    if ((Test-Path $legacyIcon) -and (-not (Test-Path $newIcon))) {
+        Copy-Item -LiteralPath $legacyIcon -Destination $newIcon -Force
+    }
+
+    if (Test-Path $supportLauncherDir) {
+        Get-ChildItem -Path $supportLauncherDir -Filter *.ps1 -File -ErrorAction SilentlyContinue | ForEach-Object {
+            $content = Get-Content -Raw $_.FullName
+            $updated = $content `
+                -replace '[A-Za-z0-9_-]+-common\.ps1', 'local-ai-control-center-common.ps1' `
+                -replace 'Local Qwen Home Computer', 'Local AI Control Center' `
+                -replace 'joes021/Local-Qwen-3\.635Ba3B-on-home-computer', 'joes021/local-ai-control-center' `
+                -replace 'Local Qwen Control Center\.lnk', 'Local AI Control Center.lnk' `
+                -replace 'opencode-local-qwen\.ico', 'opencode-control-center.ico'
+            if ($updated -ne $content) {
+                Set-Content -Path $_.FullName -Value $updated -Encoding UTF8
+            }
+        }
+    }
+
+    if (Test-Path $legacyCommon) {
+        Remove-Item -LiteralPath $legacyCommon -Force -ErrorAction SilentlyContinue
+    }
+    if (Test-Path $legacyIcon) {
+        Remove-Item -LiteralPath $legacyIcon -Force -ErrorAction SilentlyContinue
+    }
+
     return @{
         StageRoot = $stageRoot
         PayloadRoot = $payloadRoot

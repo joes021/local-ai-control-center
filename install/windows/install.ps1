@@ -20,8 +20,8 @@
 
 $ErrorActionPreference = "Stop"
 
-# Unified installer overlay for legacy Local Qwen 3.635Ba3B on home computer.
-# This script keeps legacy runtime expectations and deploys control-center-next as the Next shell.
+# Unified installer overlay for the Local AI Control Center runtime.
+# This script keeps backward compatibility with the older runtime layout while deploying control-center-next as the Next shell.
 $payloadRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $workspaceRoot = $InstallRoot
 $appRoot = Join-Path $workspaceRoot "control-center-next"
@@ -247,7 +247,7 @@ function Register-InstallerSelectedModelWithLegacyCatalog {
         return $SelectedModelSelection
     }
 
-    $legacyCommonScript = Join-Path $legacyLaunchersDir "local-qwen-common.ps1"
+    $legacyCommonScript = Join-Path $legacyLaunchersDir "local-ai-control-center-common.ps1"
     if (-not (Test-Path $legacyCommonScript)) {
         throw "Legacy common skripta nije pronadjena: $legacyCommonScript"
     }
@@ -283,8 +283,7 @@ function Sync-BootstrappedModelIntoWorkspace {
     }
 
     $candidateHomes = @(
-        (Join-Path $env:USERPROFILE "LocalAIControlCenter"),
-        (Join-Path $env:USERPROFILE "LocalQwenHome")
+        (Join-Path $env:USERPROFILE "LocalAIControlCenter")
     ) | Select-Object -Unique
     $candidatePaths = foreach ($candidateHome in $candidateHomes) {
         @(
@@ -315,6 +314,160 @@ function Sync-BootstrappedModelIntoWorkspace {
     Ensure-Dir (Split-Path -Parent $workspaceModelPath)
     Copy-Item -LiteralPath $resolvedSource -Destination $workspaceModelPath -Force
     Write-InstallLogLine "Synced bootstrapped model into workspace: source=$resolvedSource target=$workspaceModelPath"
+}
+
+function Normalize-WorkspaceBranding {
+    $windowsLauncherDir = $legacyLaunchersDir
+    if (Test-Path $windowsLauncherDir) {
+        $newCommon = Join-Path $windowsLauncherDir "local-ai-control-center-common.ps1"
+        $oldCommon = Get-ChildItem -Path $windowsLauncherDir -File -Filter "*-common.ps1" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ne "local-ai-control-center-common.ps1" } |
+            Select-Object -First 1
+        if ((-not (Test-Path $newCommon)) -and $oldCommon) {
+            Move-Item -LiteralPath $oldCommon.FullName -Destination $newCommon -Force
+        }
+
+        Get-ChildItem -Path $windowsLauncherDir -Filter *.ps1 -File -ErrorAction SilentlyContinue | ForEach-Object {
+            $content = Get-Content -Raw $_.FullName
+            $updated = $content -replace '[A-Za-z0-9_-]+-common\.ps1', 'local-ai-control-center-common.ps1'
+            if ($updated -ne $content) {
+                Set-Content -Path $_.FullName -Value $updated -Encoding UTF8
+            }
+        }
+
+        if (Test-Path $newCommon) {
+            $content = Get-Content -Raw $newCommon
+            $updated = $content
+            $updated = $updated -replace '@\("opencode\.cmd", "opencode\.ps1", "opencode", "opencode\.exe"\)', '@("opencode.ps1", "opencode.cmd", "opencode", "opencode.exe")'
+            $updated = $updated.Replace(
+@'
+if ($extension -ieq ".cmd") {
+        $npmDir = Split-Path -Parent $executablePath
+        $binScript = Join-Path $npmDir "node_modules\opencode-ai\bin\opencode"
+        if (-not (Test-Path $binScript)) {
+            throw "OpenCode bin skripta nije pronadjena: $binScript"
+        }
+
+        return [pscustomobject]@{
+            mode = "node"
+            executablePath = (Get-NodeExecutable)
+            scriptPath = $binScript
+            displayPath = $executablePath
+        }
+    }
+'@,
+@'
+if ($extension -ieq ".cmd") {
+        $npmDir = Split-Path -Parent $executablePath
+        $nativeExe = Join-Path $npmDir "node_modules\opencode-ai\bin\opencode.exe"
+        if (Test-Path $nativeExe) {
+            return [pscustomobject]@{
+                mode = "direct"
+                executablePath = $nativeExe
+                scriptPath = $null
+                displayPath = $executablePath
+            }
+        }
+
+        $binScript = Join-Path $npmDir "node_modules\opencode-ai\bin\opencode"
+        if (-not (Test-Path $binScript)) {
+            throw "OpenCode bin skripta nije pronadjena: $binScript"
+        }
+
+        return [pscustomobject]@{
+            mode = "node"
+            executablePath = (Get-NodeExecutable)
+            scriptPath = $binScript
+            displayPath = $executablePath
+        }
+    }
+'@
+            )
+            $updated = $updated.Replace(
+@'
+function Get-LlamaServerExe {
+    $state = Get-InstallState
+    $candidates = @()
+
+    if ($state.PSObject.Properties["turboServerExe"] -and $state.turboServerExe) {
+        $candidates += [string]$state.turboServerExe
+    }
+
+    if ($state.PSObject.Properties["llamaBinDir"] -and $state.llamaBinDir) {
+        $candidates += (Join-Path $state.llamaBinDir "llama-server.exe")
+    }
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    throw "llama-server.exe nije pronadjen ni u TurboQuant ni u upstream bin folderu."
+}
+'@,
+@'
+function Get-LlamaServerExe {
+    $state = Get-InstallState
+    $candidates = New-Object System.Collections.Generic.List[string]
+
+    if ($state.PSObject.Properties["turboServerExe"] -and $state.turboServerExe) {
+        $candidates.Add([string]$state.turboServerExe) | Out-Null
+    }
+
+    if ($state.PSObject.Properties["llamaServerExe"] -and $state.llamaServerExe) {
+        $candidates.Add([string]$state.llamaServerExe) | Out-Null
+    }
+
+    if ($state.PSObject.Properties["llamaBinDir"] -and $state.llamaBinDir) {
+        $candidates.Add((Join-Path $state.llamaBinDir "llama-server.exe")) | Out-Null
+    }
+
+    $installRoot = if ($state.PSObject.Properties["installRoot"] -and $state.installRoot) { [string]$state.installRoot } else { (Get-LocalQwenStateRoot) }
+    foreach ($candidate in @(
+        (Join-Path $installRoot "apps\llama.cpp\bin\llama-server.exe"),
+        (Join-Path $installRoot "apps\llama.cpp\build\bin\llama-server.exe"),
+        (Join-Path $installRoot "apps\llama.cpp-turboquant\build-cuda\bin\llama-server.exe")
+    )) {
+        if ($candidate) {
+            $candidates.Add($candidate) | Out-Null
+        }
+    }
+
+    foreach ($candidate in ($candidates | Select-Object -Unique)) {
+        if ($candidate -and (Test-Path $candidate)) {
+            return $candidate
+        }
+    }
+
+    $discovered = Get-ChildItem -Path (Join-Path $installRoot "apps") -Recurse -Filter "llama-server.exe" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($discovered) {
+        return $discovered.FullName
+    }
+
+    throw "llama-server.exe nije pronadjen ni u TurboQuant ni u upstream bin folderu."
+}
+'@
+            )
+            $updated = $updated -replace "joes021/Local-Qwen-3\.635Ba3B-on-home-computer", "joes021/local-ai-control-center"
+            $updated = $updated -replace "Local Qwen Home Computer", "Local AI Control Center"
+            $updated = $updated -replace "Local Qwen Control Center\.lnk", "Local AI Control Center.lnk"
+            if ($updated -ne $content) {
+                Set-Content -Path $newCommon -Value $updated -Encoding UTF8
+            }
+        }
+    }
+
+    $legacyIcon = Get-ChildItem -Path $assetsDir -File -Filter "opencode-*.ico" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne "opencode-control-center.ico" } |
+        Select-Object -First 1
+    $newIcon = Join-Path $assetsDir "opencode-control-center.ico"
+    if ((-not (Test-Path $newIcon)) -and $legacyIcon) {
+        Copy-Item -LiteralPath $legacyIcon.FullName -Destination $newIcon -Force
+    }
+    if ($legacyIcon -and (Test-Path $legacyIcon.FullName) -and ($legacyIcon.FullName -ne $newIcon)) {
+        Remove-Item -LiteralPath $legacyIcon.FullName -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Ensure-Command {
@@ -393,34 +546,95 @@ function Ensure-OpenCode {
     return [bool](Get-Command opencode -ErrorAction SilentlyContinue)
 }
 
+function Get-LegacyCommonScriptPath {
+    $candidates = @(
+        (Join-Path $legacyLaunchersDir "local-ai-control-center-common.ps1"),
+        (Join-Path $legacyLaunchersPayloadDir "local-ai-control-center-common.ps1")
+    )
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+    throw "Common launcher skripta nije pronadjena u Local AI Control Center payload-u."
+}
+
+function Resolve-LlamaCppServerPath {
+    param([string]$Target)
+
+    if ([string]::IsNullOrWhiteSpace($Target)) {
+        return ""
+    }
+
+    $directCandidates = @(
+        (Join-Path $Target "build\bin\llama-server.exe"),
+        (Join-Path $Target "bin\llama-server.exe")
+    )
+    foreach ($candidate in $directCandidates) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    $resolved = Get-ChildItem -Path $Target -Recurse -Filter "llama-server.exe" -File -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($resolved) {
+        return $resolved.FullName
+    }
+
+    return ""
+}
+
 function Ensure-LlamaCpp {
     $target = Join-Path $appsDir "llama.cpp"
-    if (Test-Path (Join-Path $target "build\bin\llama-server.exe")) {
-        return $true
+    $existingPath = Resolve-LlamaCppServerPath -Target $target
+    if ($existingPath) {
+        return $existingPath
     }
     $existingState = Read-JsonFile $installStatePath
     if ($existingState -and $existingState.llamaServerExe -and (Test-Path ([string]$existingState.llamaServerExe))) {
-        return $true
+        return [string]$existingState.llamaServerExe
+    }
+    $running = Get-RunningRuntimeInfo
+    if ($running -and $running.ExecutablePath -and (Test-Path ([string]$running.ExecutablePath))) {
+        return [string]$running.ExecutablePath
     }
     if (Find-HealthyRuntimePort) {
-        return $true
+        return ""
     }
     if ($SkipLlamaSetup) {
-        return $false
+        return ""
     }
     if (-not (Test-Path $target)) {
         git clone https://github.com/ggml-org/llama.cpp.git $target
     }
-    $llamaExe = Join-Path $target "build\bin\llama-server.exe"
-    if (-not (Test-Path $llamaExe) -and (Get-Command cmake -ErrorAction SilentlyContinue)) {
+    $llamaExe = Resolve-LlamaCppServerPath -Target $target
+    if (-not $llamaExe -and (Get-Command cmake -ErrorAction SilentlyContinue)) {
         $cudaFlag = if (Get-Command nvcc -ErrorAction SilentlyContinue) { "ON" } else { "OFF" }
         $generator = if (Get-Command ninja -ErrorAction SilentlyContinue) { "Ninja" } else { "Visual Studio 17 2022" }
+        Write-InstallLogLine "Ensure-LlamaCpp: attempting local build with generator=$generator cuda=$cudaFlag"
         & cmake -G $generator -S $target -B (Join-Path $target "build") "-DGGML_CUDA=$cudaFlag" | Out-Null
         if ($LASTEXITCODE -eq 0) {
             & cmake --build (Join-Path $target "build") --config Release -j | Out-Null
         }
+        $llamaExe = Resolve-LlamaCppServerPath -Target $target
     }
-    return [bool](Test-Path $llamaExe)
+
+    if (-not $llamaExe) {
+        try {
+            $legacyCommonScript = Get-LegacyCommonScriptPath
+            . $legacyCommonScript
+            $prebuiltDir = Join-Path $target "bin"
+            Write-InstallLogLine "Ensure-LlamaCpp: local build unavailable, downloading prebuilt llama.cpp Windows CUDA binary."
+            Download-LlamaCppWindowsCuda -DestinationDir $prebuiltDir
+            $llamaExe = Resolve-LlamaCppServerPath -Target $target
+        }
+        catch {
+            Write-InstallLogLine "Ensure-LlamaCpp fallback failed: $(Get-ExceptionSummary -Exception $_.Exception)"
+        }
+    }
+
+    return $llamaExe
 }
 
 function Ensure-TurboQuant {
@@ -1080,6 +1294,7 @@ Copy-FolderContent -Source (Join-Path $payloadRoot "config") -Destination (Join-
 Copy-FolderContent -Source (Join-Path $payloadRoot "scripts") -Destination (Join-Path $appRoot "scripts")
 Copy-FolderContent -Source (Join-Path $payloadRoot "assets") -Destination (Join-Path $appRoot "assets")
 Copy-FolderContent -Source $legacyLaunchersPayloadDir -Destination $legacyLaunchersDir
+Normalize-WorkspaceBranding
 Copy-FolderContent -Source (Get-WorkspaceSeedSource -PrimaryRelativePath "support\config\profiles" -FallbackRelativePath "config\profiles") -Destination (Join-Path $workspaceRoot "config\profiles")
 Copy-FolderContent -Source (Get-WorkspaceSeedSource -PrimaryRelativePath "support\scripts" -FallbackRelativePath "scripts") -Destination (Join-Path $workspaceRoot "scripts")
 Copy-FolderContent -Source (Get-WorkspaceSeedSource -PrimaryRelativePath "support\assets\icons" -FallbackRelativePath "assets\icons") -Destination (Join-Path $workspaceRoot "assets\icons")
@@ -1097,8 +1312,9 @@ Write-InstallLogLine "Checking runtime components."
 try {
     $opencodeReady = Ensure-OpenCode
     Write-InstallLogLine "Component check: OpenCode=$opencodeReady"
-    $llamaReady = Ensure-LlamaCpp
-    Write-InstallLogLine "Component check: llamaReady=$llamaReady"
+    $llamaPath = Ensure-LlamaCpp
+    $llamaReady = -not [string]::IsNullOrWhiteSpace($llamaPath)
+    Write-InstallLogLine "Component check: llamaReady=$llamaReady path=$llamaPath"
     $turboInfo = Ensure-TurboQuant
     Write-InstallLogLine "Component check: TurboQuant=$($turboInfo.status)"
 }
@@ -1107,19 +1323,18 @@ catch {
     Write-InstallLogLine "Component check failed: $exceptionSummary"
     throw
 }
-$turboServerPath = if ($turboInfo.status -eq "present") { Join-Path $appsDir "llama.cpp-turboquant\build-cuda\bin\llama-server.exe" } else { "" }
+$turboServerPath = if ($turboInfo.status -eq "present") { (Resolve-LlamaCppServerPath -Target (Join-Path $appsDir "llama.cpp-turboquant")) } else { "" }
 Write-InstallLogLine "Component check finished: OpenCode=$opencodeReady llamaReady=$llamaReady TurboQuant=$($turboInfo.status)"
 
 $launchWrapper = Write-LaunchWrapper
 $controlCenterIconPath = Join-Path $assetsDir "control-center.ico"
-$openCodeIconPath = Join-Path $assetsDir "opencode-local-qwen.ico"
+$openCodeIconPath = Join-Path $assetsDir "opencode-control-center.ico"
 Write-Shortcut -ShortcutPath (Join-Path $desktopDir "Local AI Control Center.lnk") -TargetPath $launchWrapper -IconPath $controlCenterIconPath
 if ($opencodeReady -and (Resolve-OpenCodePath)) {
     Write-Shortcut -ShortcutPath (Join-Path $desktopDir "OpenCode - Local AI Control Center.lnk") -TargetPath (Resolve-OpenCodePath) -IconPath $openCodeIconPath
 }
 Write-DesktopFolderMetadata -FolderPath $desktopDir -IconPath $controlCenterIconPath
 
-$llamaPath = Join-Path $appsDir "llama.cpp\build\bin\llama-server.exe"
 Write-JsonFile -Path $runtimeConfigPath -Payload @{ accessMode = $AccessMode }
 Write-InstallLogLine "Wrote runtime-config.json"
 Update-InstallStateAndSettings -LlamaReady $llamaReady -LlamaPath $llamaPath -TurboServerPath $turboServerPath -SelectedModelSelection $selectedModelSelection -ModelBootstrapState $null

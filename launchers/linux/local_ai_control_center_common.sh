@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-get_local_qwen_root() {
+get_local_ai_control_center_root() {
+  if [ -n "${LOCAL_AI_CONTROL_CENTER_HOME:-}" ]; then
+    printf '%s\n' "$LOCAL_AI_CONTROL_CENTER_HOME"
+    return 0
+  fi
+
   if [ -n "${LOCAL_QWEN_HOME:-}" ]; then
     printf '%s\n' "$LOCAL_QWEN_HOME"
     return 0

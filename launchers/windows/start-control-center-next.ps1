@@ -7,7 +7,7 @@ $script:VenvDir = Join-Path $script:Root ".venv"
 $script:StateDir = Join-Path $script:Root "state"
 $script:StateFile = Join-Path $script:StateDir "runtime-state.json"
 $script:RuntimeConfigFile = Join-Path $script:StateDir "runtime-config.json"
-$script:StartupMutexName = "LocalQwenControlCenterNextStartup"
+$script:StartupMutexName = "LocalAIControlCenterNextStartup"
 
 $script:LocalHost = "127.0.0.1"
 $script:StartPort = if ($env:CONTROL_CENTER_NEXT_START_PORT) { [int]$env:CONTROL_CENTER_NEXT_START_PORT } else { 3210 }

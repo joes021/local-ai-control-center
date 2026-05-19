@@ -89,17 +89,34 @@ class StatusServiceTests(unittest.TestCase):
             )
 
             process_output = f"1234 {turbo.as_posix()} -m /tmp/model.gguf --port 8091\n"
-            with patch("backend.app.services.local_qwen_state.subprocess.run") as run_mock:
-                run_mock.return_value.returncode = 0
-                run_mock.return_value.stdout = process_output
-                run_mock.return_value.stderr = ""
+            with patch.dict("os.environ", {"CONTROL_CENTER_NEXT_TARGET_PLATFORM": "linux"}, clear=False):
+                with patch("backend.app.services.local_qwen_state.subprocess.run") as run_mock:
+                    run_mock.return_value.returncode = 0
+                    run_mock.return_value.stdout = process_output
+                    run_mock.return_value.stderr = ""
 
-                payload = load_runtime_summary(home)
+                    payload = load_runtime_summary(home)
 
             self.assertEqual(payload["activeBinary"], turbo.as_posix())
             self.assertEqual(payload["activeBinarySource"], "process")
             self.assertIn(payload["runtimeLiveStatus"], {"potvrđen kroz proces", "potvrđen kroz health"})
 
+
+    def test_detect_running_runtime_binary_uses_windows_process_listing(self):
+        from backend.app.services.local_qwen_state import detect_running_runtime_binary
+
+        llama = r"C:\Users\demo\LocalAIControlCenter\apps\llama.cpp\bin\llama-server.exe"
+        turbo = r"C:\Users\demo\LocalAIControlCenter\apps\llama.cpp-turboquant\build-cuda\bin\llama-server.exe"
+
+        with patch.dict("os.environ", {"CONTROL_CENTER_NEXT_TARGET_PLATFORM": "windows"}, clear=False):
+            with patch("backend.app.services.local_qwen_state.subprocess.run") as run_mock:
+                run_mock.return_value.returncode = 0
+                run_mock.return_value.stdout = turbo + "\n"
+                run_mock.return_value.stderr = ""
+
+                resolved = detect_running_runtime_binary(llama_path=llama, turbo_path=turbo)
+
+        self.assertEqual(resolved, turbo)
 
     def test_runtime_summary_uses_lifecycle_reason_when_health_and_process_are_missing(self):
         from backend.app.services.local_qwen_state import load_runtime_summary

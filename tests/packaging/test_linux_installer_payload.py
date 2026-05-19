@@ -92,9 +92,9 @@ class LinuxInstallerPayloadTests(unittest.TestCase):
 
     def test_linux_log_launchers_exist_for_repo_fallback(self):
         show_logs = (ROOT / "launchers" / "linux" / "show-logs.sh").read_text(encoding="utf-8")
-        common = (ROOT / "launchers" / "linux" / "local_qwen_common.sh").read_text(encoding="utf-8")
+        common = (ROOT / "launchers" / "linux" / "local_ai_control_center_common.sh").read_text(encoding="utf-8")
         self.assertIn("Local AI Control Center log viewer", show_logs)
-        self.assertIn("get_local_qwen_root", common)
+        self.assertIn("get_local_ai_control_center_root", common)
         self.assertIn("local-ai-control-center", common)
 
     def test_linux_builder_packages_legacy_launchers(self):

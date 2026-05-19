@@ -293,7 +293,7 @@ def _download_with_progress(
     request = Request(
         download_url,
         headers={
-            "User-Agent": "LocalQwen-ControlCenterNext/1.0",
+            "User-Agent": "LocalAIControlCenter/1.0",
             "Accept": "*/*",
         },
     )
@@ -387,7 +387,7 @@ def _resolve_download_url(info: dict[str, Any], platform_name: str) -> str:
 
 def _resolve_target_path(home: Path, latest_version: str, platform_name: str) -> Path:
     if platform_name == "windows":
-        target_dir = Path(os.environ.get("TEMP", str(Path.home() / "AppData" / "Local" / "Temp"))) / "LocalQwenUpdate"
+        target_dir = Path(os.environ.get("TEMP", str(Path.home() / "AppData" / "Local" / "Temp"))) / "LocalAIControlCenterUpdate"
         safe_version = latest_version or "latest"
         return target_dir / f"Local-AI-Control-Center-Setup-{safe_version}.exe"
     target_dir = Path.home() / "Downloads"

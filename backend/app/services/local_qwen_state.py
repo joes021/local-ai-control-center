@@ -223,6 +223,12 @@ def _runtime_label(runtime_name: str) -> str:
 
 
 def detect_running_runtime_binary(*, llama_path: str, turbo_path: str) -> str:
+    if get_target_platform() == "windows":
+        return _detect_running_runtime_binary_windows(
+            llama_path=llama_path,
+            turbo_path=turbo_path,
+        )
+
     try:
         completed = subprocess.run(
             ["ps", "-ef"],
@@ -246,6 +252,47 @@ def detect_running_runtime_binary(*, llama_path: str, turbo_path: str) -> str:
         if normalized_turbo and normalized_turbo in lowered:
             return turbo_path
         if normalized_llama and normalized_llama in lowered:
+            return llama_path
+    return ""
+
+
+def _detect_running_runtime_binary_windows(*, llama_path: str, turbo_path: str) -> str:
+    command = (
+        "$ErrorActionPreference='SilentlyContinue'; "
+        "Get-CimInstance Win32_Process -Filter \"Name = 'llama-server.exe'\" "
+        "| Select-Object -ExpandProperty ExecutablePath"
+    )
+    try:
+        completed = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                command,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+    except OSError:
+        return ""
+    if completed.returncode != 0:
+        return ""
+
+    normalized_turbo = turbo_path.replace("\\", "/").lower()
+    normalized_llama = llama_path.replace("\\", "/").lower()
+    for line in completed.stdout.splitlines():
+        current = line.strip()
+        lowered = current.replace("\\", "/").lower()
+        if not lowered:
+            continue
+        if normalized_turbo and normalized_turbo == lowered:
+            return turbo_path
+        if normalized_llama and normalized_llama == lowered:
             return llama_path
     return ""
 

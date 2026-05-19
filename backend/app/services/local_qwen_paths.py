@@ -6,23 +6,20 @@ import os
 from backend.app.services.platform_config import get_target_platform
 
 def detect_local_qwen_home() -> Path:
+    new_override = os.environ.get("LOCAL_AI_CONTROL_CENTER_HOME", "").strip()
+    if new_override:
+        return Path(new_override).expanduser()
     override = os.environ.get("LOCAL_QWEN_HOME", "").strip()
     if override:
         return Path(override).expanduser()
     if get_target_platform() == "windows":
         new_default = Path.home() / "LocalAIControlCenter"
-        legacy_default = Path.home() / "LocalQwenHome"
         if new_default.exists():
             return new_default
-        if legacy_default.exists():
-            return legacy_default
         return new_default
     new_default = Path.home() / "local-ai-control-center"
-    legacy_default = Path.home() / "local-qwen-home"
     if new_default.exists():
         return new_default
-    if legacy_default.exists():
-        return legacy_default
     return new_default
 
 
