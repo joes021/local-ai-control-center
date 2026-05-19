@@ -241,6 +241,34 @@ class ModelsServiceTests(unittest.TestCase):
         self.assertEqual(payload["speedMBps"], 42.0)
         self.assertEqual(payload["etaSeconds"], 180)
 
+    def test_windows_download_model_spawns_detached_worker_and_writes_starting_progress(self):
+        from backend.app.services import models_service
+
+        with TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            launchers = home / "launchers"
+            state_dir = home / "state"
+            launchers.mkdir(parents=True)
+            state_dir.mkdir(parents=True)
+            (launchers / "manage-models.ps1").write_text("# demo", encoding="utf-8")
+
+            fake_process = mock.Mock(pid=4321)
+            with (
+                mock.patch.dict("os.environ", {"CONTROL_CENTER_NEXT_TARGET_PLATFORM": "windows", "SystemRoot": r"C:\Windows"}, clear=False),
+                mock.patch.object(models_service, "detect_local_qwen_home", return_value=home),
+                mock.patch.object(models_service.subprocess, "Popen", return_value=fake_process) as popen_mock,
+            ):
+                result = models_service.download_model("hf-demo.gguf")
+
+            self.assertEqual(result["status"], "ok")
+            kwargs = popen_mock.call_args.kwargs
+            self.assertTrue(kwargs["close_fds"])
+            self.assertNotEqual(kwargs["creationflags"], 0)
+            progress = json.loads((state_dir / "model-download-progress.json").read_text(encoding="utf-8"))
+            self.assertEqual(progress["status"], "starting")
+            self.assertEqual(progress["modelId"], "hf-demo.gguf")
+            self.assertIsInstance(progress["updatedAt"], float)
+
     def test_detected_active_model_outside_models_dir_is_marked_installed(self):
         from backend.app.services import models_service
 

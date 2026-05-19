@@ -814,6 +814,8 @@ function Get-ModelBootstrapState {
     $selectedModelDownloadFile = [string]$SelectedModelSelection.downloadFile
     $selectedModelPath = if ($selectedModelDownloadFile) { Join-Path (Join-Path $workspaceRoot "models") $selectedModelDownloadFile } else { "" }
     $selectedModelDownloaded = $false
+    $installedModelLeaf = if ($InstalledModelFile) { Split-Path $InstalledModelFile -Leaf } else { "" }
+    $hasExistingInstalledModel = -not [string]::IsNullOrWhiteSpace($InstalledModelFile) -and (Test-Path $InstalledModelFile)
     if ($selectedModelPath -and (Test-Path $selectedModelPath)) {
         $selectedModelDownloaded = $true
     }
@@ -829,6 +831,14 @@ function Get-ModelBootstrapState {
         elseif ($selectedModelDownloaded) {
             $effectiveStatus = "ready"
         }
+        elseif ($hasExistingInstalledModel) {
+            $effectiveStatus = "ready-existing-model"
+            $selectedModelDownloaded = $true
+            $selectedModelPath = $InstalledModelFile
+            if ([string]::IsNullOrWhiteSpace($selectedModelDownloadFile)) {
+                $selectedModelDownloadFile = $installedModelLeaf
+            }
+        }
         else {
             $effectiveStatus = "download-required"
         }
@@ -839,6 +849,7 @@ function Get-ModelBootstrapState {
         switch ($effectiveStatus) {
             "selection-missing" { $BootstrapMessage = "Installer nema kompletan selected model selection za model bootstrap fazu." }
             "ready" { $BootstrapMessage = "Selected model je spreman za model bootstrap fazu." }
+            "ready-existing-model" { $BootstrapMessage = "Postojeci aktivni lokalni model je prepoznat i koristi se za readiness tok bez novog download-a." }
             "download-required" { $BootstrapMessage = "Selected model jos nije prisutan i mora da prodje model bootstrap/download fazu." }
             "downloaded" { $BootstrapMessage = "Selected model je uspesno preuzet kroz model bootstrap fazu." }
             "download-skipped" { $BootstrapMessage = "Model bootstrap nije kompletan jer je download preskocen." }
@@ -1184,7 +1195,14 @@ function Start-ControlCenterAndWait {
         $env:CONTROL_CENTER_NEXT_ACCESS_MODE = $AccessMode
         $env:CONTROL_CENTER_NEXT_SKIP_OPEN = "1"
         $env:CONTROL_CENTER_NEXT_FORCE_RESTART = "1"
-        & (Get-WindowsPowerShellExe) -NoProfile -ExecutionPolicy Bypass -File (Join-Path $launchersDir "start-control-center-next.ps1") | Out-Null
+        $startControlCenterScript = Join-Path $launchersDir "start-control-center-next.ps1"
+        Start-Process -FilePath (Get-WindowsPowerShellExe) -ArgumentList @(
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            $startControlCenterScript
+        ) -WindowStyle Hidden | Out-Null
     }
     finally {
         foreach ($entry in $saved.GetEnumerator()) {

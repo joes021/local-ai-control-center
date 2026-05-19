@@ -1,9 +1,9 @@
-v2.24.22
+v2.24.23
 ========
 
-- Windows installer no longer blocks on a synchronous runtime start, so setup can reach Finish instead of hanging after model bootstrap.
-- Windows OpenCode launch now chooses direct interactive launch when the backend already runs in the logged-in desktop session, and only falls back to scheduled-task launch from Session 0 style contexts.
-- Fresh Windows install seeds lower-RAM startup settings for small GPU classes so OpenCode does not immediately inherit the overly strict 1024 output-token cap.
+- Windows Browser download now starts through a detached worker and writes a real timestamped progress state, so the panel no longer gets stuck forever on `starting`.
+- Windows reinstall now reuses an already active local model for readiness instead of silently trying to bootstrap a new wizard-default model in the background.
+- This reduces the hidden post-install workload that was keeping setup at the end without a visible `Finish` transition on existing installs.
 
 v2.24.20
 ========

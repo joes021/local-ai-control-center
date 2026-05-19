@@ -13,6 +13,7 @@ $script:LocalHost = "127.0.0.1"
 $script:StartPort = if ($env:CONTROL_CENTER_NEXT_START_PORT) { [int]$env:CONTROL_CENTER_NEXT_START_PORT } else { 3210 }
 $script:EndPort = if ($env:CONTROL_CENTER_NEXT_END_PORT) { [int]$env:CONTROL_CENTER_NEXT_END_PORT } else { 3299 }
 $script:HealthPath = "/api/health"
+$script:SkipOpen = [string]$env:CONTROL_CENTER_NEXT_SKIP_OPEN -eq "1"
 
 function Ensure-StateDir {
     if (-not (Test-Path $script:StateDir)) {
@@ -178,7 +179,9 @@ function Reuse-ExistingBackend {
         return $false
     }
 
-    Open-AppUrl -Url (Get-AppUrl -Port ([int]$state.port))
+    if (-not $script:SkipOpen) {
+        Open-AppUrl -Url (Get-AppUrl -Port ([int]$state.port))
+    }
     return $true
 }
 
@@ -311,7 +314,9 @@ try {
         exit 1
     }
 
-    Open-AppUrl -Url $appUrl
+    if (-not $script:SkipOpen) {
+        Open-AppUrl -Url $appUrl
+    }
     Write-Output "Control Center Next je dostupan na: $appUrl"
 }
 finally {

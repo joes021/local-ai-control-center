@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -872,6 +873,7 @@ def _download_model_windows(model_id: str) -> dict[str, object]:
     home = detect_local_qwen_home()
     progress_path = home / "state" / "model-download-progress.json"
     progress_path.parent.mkdir(parents=True, exist_ok=True)
+    started_at = time.time()
     progress_path.write_text(
         json.dumps(
             {
@@ -885,7 +887,7 @@ def _download_model_windows(model_id: str) -> dict[str, object]:
                 "speedMBps": None,
                 "etaSeconds": None,
                 "message": f"Pokrecem download za {model_id}",
-                "updatedAt": "",
+                "updatedAt": started_at,
             },
             ensure_ascii=False,
             indent=2,
@@ -894,26 +896,48 @@ def _download_model_windows(model_id: str) -> dict[str, object]:
     )
 
     creation_flags = 0
+    powershell_exe = os.path.join(
+        os.environ.get("SystemRoot", r"C:\Windows"),
+        "System32",
+        "WindowsPowerShell",
+        "v1.0",
+        "powershell.exe",
+    )
+    if not os.path.isfile(powershell_exe):
+        powershell_exe = "powershell"
     if os.name == "nt":
-        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        creation_flags = (
+            getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            | getattr(subprocess, "DETACHED_PROCESS", 0)
+            | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        )
+
+    escaped_script = str(script_path).replace("'", "''")
+    escaped_progress = str(progress_path).replace("'", "''")
+    escaped_model = model_id.replace("'", "''")
+    wrapper = (
+        "$ErrorActionPreference='Stop'; "
+        f"try {{ & '{escaped_script}' -ModelId '{escaped_model}' -Download | Out-Null }} "
+        "catch { "
+        f"$payload = @{{ status='error'; modelId='{escaped_model}'; fileName=''; source=''; percent=$null; downloadedGiB=$null; totalGiB=$null; speedMBps=$null; etaSeconds=$null; message=$_.Exception.Message; updatedAt={started_at} }} | ConvertTo-Json -Depth 10; "
+        f"Set-Content -Path '{escaped_progress}' -Value $payload -Encoding UTF8; "
+        "exit 1 }"
+    )
 
     process = subprocess.Popen(
         [
-            "powershell",
+            powershell_exe,
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
-            "-File",
-            str(script_path),
-            "-ModelId",
-            model_id,
-            "-Download",
+            "-Command",
+            wrapper,
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         stdin=subprocess.DEVNULL,
         creationflags=creation_flags,
-        close_fds=False,
+        close_fds=True,
     )
     return {
         "status": "ok",

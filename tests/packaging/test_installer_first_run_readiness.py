@@ -13,6 +13,7 @@ class InstallerFirstRunReadinessTests(unittest.TestCase):
         self.assertIn("selectedModelDownloaded", content)
         self.assertIn("selected model selection", content.lower())
         self.assertIn("model bootstrap", content.lower())
+        self.assertIn('"ready-existing-model"', content)
 
     def test_linux_installer_declares_model_bootstrap_contract(self):
         content = (ROOT / "install" / "linux" / "install.sh").read_text(encoding="utf-8")
