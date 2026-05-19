@@ -74,6 +74,10 @@ export async function restoreDefaultBenchmarkTests(): Promise<{ status: string; 
   return postJson("/api/benchmark/batteries/restore-defaults", {});
 }
 
+export async function clearBenchmarkHistory(): Promise<{ status: string; summary: string }> {
+  return postJson("/api/benchmark/clear-history", {});
+}
+
 export async function fetchServerStatus(): Promise<ServerStatusPayload> {
   const response = await fetch("/api/server/status");
   if (!response.ok) {

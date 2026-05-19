@@ -13,7 +13,7 @@ from typing import Any
 from urllib.request import Request, urlopen
 
 from backend.app.services.local_qwen_paths import detect_local_qwen_home
-from backend.app.services.platform_config import get_target_platform
+from backend.app.services.platform_config import get_target_architecture, get_target_platform
 from backend.app.services.script_runner import (
     build_result_payload,
     resolve_linux_launcher_path,
@@ -181,7 +181,7 @@ def load_update_release_info() -> dict[str, Any]:
                 or "Check updates nije uspeo."
             )
 
-        return json.loads(completed.stdout.strip())
+        return _normalize_release_info(json.loads(completed.stdout.strip()))
     except Exception:
         return _load_release_info_fallback()
 
@@ -367,7 +367,19 @@ def _resolve_download_url(info: dict[str, Any], platform_name: str) -> str:
     if platform_name == "windows":
         url = str(info.get("windowsInstallerUrl") or "").strip()
     else:
-        url = str(info.get("linuxInstallerUrl") or "").strip()
+        architecture = get_target_architecture()
+        if architecture == "arm64":
+            url = str(
+                info.get("linuxArm64InstallerUrl")
+                or info.get("linuxInstallerUrl")
+                or ""
+            ).strip()
+        else:
+            url = str(
+                info.get("linuxX64InstallerUrl")
+                or info.get("linuxInstallerUrl")
+                or ""
+            ).strip()
     if not url:
         raise RuntimeError("Nije pronadjen installer URL za update.")
     return url
@@ -377,9 +389,12 @@ def _resolve_target_path(home: Path, latest_version: str, platform_name: str) ->
     if platform_name == "windows":
         target_dir = Path(os.environ.get("TEMP", str(Path.home() / "AppData" / "Local" / "Temp"))) / "LocalQwenUpdate"
         safe_version = latest_version or "latest"
-        return target_dir / f"Local-Qwen-Setup-{safe_version}.exe"
+        return target_dir / f"Local-AI-Control-Center-Setup-{safe_version}.exe"
     target_dir = Path.home() / "Downloads"
-    return target_dir / f"Local-Qwen-Setup-{latest_version}.run"
+    architecture = get_target_architecture()
+    if architecture == "arm64":
+        return target_dir / f"Local-AI-Control-Center-Setup-linux-arm64-{latest_version}.run"
+    return target_dir / f"Local-AI-Control-Center-Setup-linux-x86_64-{latest_version}.run"
 
 
 def _progress_path(home: Path) -> Path:
@@ -520,14 +535,14 @@ def _extract_path_from_message(message: str) -> str:
 def _load_release_info_fallback() -> dict[str, Any]:
     home = detect_local_qwen_home()
     current_version = _read_current_version(home)
-    latest_version, release_url = _resolve_latest_release_without_api()
+    latest_version, release_url, asset_urls = _resolve_latest_release_without_api()
     update_available = (
         bool(current_version)
         and bool(latest_version)
         and _compare_versions(latest_version, current_version) > 0
     )
     latest_tag = f"v{latest_version}" if latest_version else ""
-    repo = "https://github.com/joes021/Local-Qwen-3.635Ba3B-on-home-computer"
+    repo = "https://github.com/joes021/local-ai-control-center"
     return {
         "currentVersion": current_version or "unknown",
         "latestVersion": latest_version or "unknown",
@@ -536,8 +551,10 @@ def _load_release_info_fallback() -> dict[str, Any]:
         "aheadOfPublicRelease": False,
         "versionRelation": "equal" if not update_available and current_version == latest_version else ("older" if update_available else "unknown"),
         "releaseUrl": release_url or f"{repo}/releases/latest",
-        "windowsInstallerUrl": f"{repo}/releases/latest/download/Local-Qwen-Setup-latest.exe",
-        "linuxInstallerUrl": f"{repo}/releases/latest/download/Local-Qwen-Setup-latest.run",
+        "windowsInstallerUrl": asset_urls.get("windowsInstallerUrl", ""),
+        "linuxInstallerUrl": asset_urls.get("linuxX64InstallerUrl", "") or asset_urls.get("linuxArm64InstallerUrl", ""),
+        "linuxX64InstallerUrl": asset_urls.get("linuxX64InstallerUrl", ""),
+        "linuxArm64InstallerUrl": asset_urls.get("linuxArm64InstallerUrl", ""),
     }
 
 
@@ -552,16 +569,59 @@ def _read_current_version(home: Path) -> str:
         return ""
 
 
-def _resolve_latest_release_without_api() -> tuple[str, str]:
+def _resolve_latest_release_without_api() -> tuple[str, str, dict[str, str]]:
     request = Request(
-        "https://github.com/joes021/Local-Qwen-3.635Ba3B-on-home-computer/releases/latest",
-        headers={"User-Agent": "LocalQwen-ControlCenterNext/1.0"},
+        "https://api.github.com/repos/joes021/local-ai-control-center/releases/latest",
+        headers={
+            "User-Agent": "LocalAIControlCenter/1.0",
+            "Accept": "application/vnd.github+json",
+        },
     )
     with urlopen(request, timeout=30) as response:
-        final_url = response.geturl()
-    match = re.search(r"/tag/v([0-9][^/?#]*)", final_url)
-    version = match.group(1) if match else ""
-    return version, final_url
+        payload = json.loads(response.read().decode("utf-8"))
+
+    tag_name = str(payload.get("tag_name") or "")
+    version = tag_name.removeprefix("v")
+    release_url = str(payload.get("html_url") or "")
+    asset_urls = {
+        "windowsInstallerUrl": "",
+        "linuxX64InstallerUrl": "",
+        "linuxArm64InstallerUrl": "",
+    }
+
+    for asset in payload.get("assets", []):
+        if not isinstance(asset, dict):
+            continue
+        name = str(asset.get("name") or "")
+        browser_download_url = str(asset.get("browser_download_url") or "")
+        if name.endswith(".exe"):
+            asset_urls["windowsInstallerUrl"] = browser_download_url
+        elif "linux-x86_64" in name and name.endswith(".run"):
+            asset_urls["linuxX64InstallerUrl"] = browser_download_url
+        elif "linux-arm64" in name and name.endswith(".run"):
+            asset_urls["linuxArm64InstallerUrl"] = browser_download_url
+
+    return version, release_url, asset_urls
+
+
+def _normalize_release_info(info: dict[str, Any]) -> dict[str, Any]:
+    release_url = str(info.get("releaseUrl") or "")
+    latest_version = str(info.get("latestVersion") or "")
+    current_version = str(info.get("currentVersion") or "")
+    if (
+        not latest_version
+        or latest_version == "unknown"
+        or "Local-Qwen-3.635Ba3B-on-home-computer" in release_url
+        or "Local-Qwen-Setup" in str(info.get("windowsInstallerUrl") or "")
+    ):
+        return _load_release_info_fallback()
+
+    if current_version and latest_version and info.get("versionRelation") in {None, "", "unknown"}:
+        comparison = _compare_versions(latest_version, current_version)
+        info["updateAvailable"] = comparison > 0
+        info["aheadOfPublicRelease"] = comparison < 0
+        info["versionRelation"] = "older" if comparison > 0 else "newer" if comparison < 0 else "equal"
+    return info
 
 
 def _compare_versions(left: str, right: str) -> int:

@@ -861,6 +861,22 @@ select:-webkit-autofill {
   gap: 16px;
 }
 
+.download-progress-track {
+  width: 100%;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.download-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #d5942f 0%, #f2b84b 45%, #f8d48b 100%);
+  transition: width 180ms ease-out;
+}
+
 .browser-table-wrap {
   overflow: auto;
 }

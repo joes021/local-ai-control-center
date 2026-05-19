@@ -265,6 +265,29 @@ class BenchmarkServiceTests(unittest.TestCase):
             timeout=LIVE_SLOTS_TIMEOUT_SECONDS,
         )
 
+    def test_clear_benchmark_history_resets_files(self):
+        from backend.app.services.benchmark_service import clear_benchmark_history
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            state = home / "state"
+            state.mkdir(parents=True, exist_ok=True)
+            (state / "token-metrics-history.json").write_text(json.dumps([{"label": "x"}]), encoding="utf-8")
+            (state / "benchmark-history.json").write_text(json.dumps([{"runId": "run-1"}]), encoding="utf-8")
+            (state / "benchmark-live-history.json").write_text(json.dumps([{"label": "live"}]), encoding="utf-8")
+            (state / "benchmark-live-slots.json").write_text(json.dumps({"entries": [{"slot": 1}]}), encoding="utf-8")
+
+            with patch(
+                "backend.app.services.benchmark_service.detect_local_qwen_home",
+                return_value=home,
+            ):
+                payload = clear_benchmark_history()
+
+            self.assertEqual(payload["status"], "ok")
+            self.assertEqual(json.loads((state / "token-metrics-history.json").read_text(encoding="utf-8")), [])
+            self.assertEqual(json.loads((state / "benchmark-history.json").read_text(encoding="utf-8")), [])
+            self.assertEqual(json.loads((state / "benchmark-live-history.json").read_text(encoding="utf-8")), [])
+
 
 if __name__ == "__main__":
     unittest.main()

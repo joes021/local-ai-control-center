@@ -923,12 +923,14 @@ export function BrowserPage() {
             <p className="helper-text">
               Use <strong>Check compatibility</strong> to open the compatibility calculator before you add the model to the local catalog.
             </p>
+
+            <ModelDownloadProgressCard progress={downloadProgress} />
+
+            {result && result.action === "browser-download" ? <ActionResultPanel result={result} /> : null}
           </section>
         ) : (
           <div className="helper-text">Select a Browser row to inspect details and actions.</div>
         )}
-
-        <ModelDownloadProgressCard progress={downloadProgress} />
 
         <div className="browser-table-panel">
           <div className="browser-table-wrap">
@@ -965,6 +967,7 @@ export function BrowserPage() {
                           disabled={Boolean(pendingAction)}
                           onClick={(event) => {
                             event.stopPropagation();
+                            setSelectedId(item.id);
                             void handleDirectBrowserDownload(item);
                           }}
                         >
@@ -1032,7 +1035,7 @@ export function BrowserPage() {
         onClose={() => setCompatibilityRequest(null)}
       />
 
-      <ActionResultPanel result={result} />
+      {result && result.action !== "browser-download" ? <ActionResultPanel result={result} /> : null}
     </>
   );
 }

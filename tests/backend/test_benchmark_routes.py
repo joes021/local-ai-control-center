@@ -46,6 +46,22 @@ class BenchmarkRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), expected)
 
+    def test_benchmark_clear_history_route_returns_service_payload(self):
+        from backend.app.main import app
+        from fastapi.testclient import TestClient
+
+        expected = {"status": "ok", "summary": "obrisano"}
+
+        with patch(
+            "backend.app.routes.benchmark.clear_benchmark_history",
+            return_value=expected,
+        ):
+            client = TestClient(app)
+            response = client.post("/api/benchmark/clear-history")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), expected)
+
 
 if __name__ == "__main__":
     unittest.main()

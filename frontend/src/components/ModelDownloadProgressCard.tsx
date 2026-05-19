@@ -42,11 +42,19 @@ export function ModelDownloadProgressCard({ progress }: { progress: DownloadProg
     return null;
   }
 
+  const percent = valueOrNull(progress.percent);
+
   return (
     <section className="status-card wide-card">
       <div className="section-header">
         <span className="status-label">Download status</span>
         <strong className="status-value">{progress.status}</strong>
+      </div>
+      <div className="download-progress-track" aria-hidden="true">
+        <div
+          className="download-progress-fill"
+          style={{ width: `${Math.max(0, Math.min(percent ?? 0, 100))}%` }}
+        />
       </div>
       <div className="helper-text">
         <strong>Model:</strong> {progress.modelId || progress.fileName || "nema aktivnog modela"}
@@ -78,4 +86,8 @@ export function ModelDownloadProgressCard({ progress }: { progress: DownloadProg
       </div>
     </section>
   );
+}
+
+function valueOrNull(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }

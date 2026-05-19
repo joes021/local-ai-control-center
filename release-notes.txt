@@ -1,5 +1,12 @@
-v2.24.12
+v2.24.13
 ========
+
+- Browser download status i pending rezultat vise nisu zakucani skroz ispod tabele, nego stoje odmah ispod detail panela uz model na koji se akcija odnosi.
+- Browser download status sada ima i pravi progress bar, pa se ETA/procenat vizuelno vide odmah posle klika na `Download`.
+- Benchmark grafikon sada koristi objedinjeni signal iz `history` i `liveHistory`, pa vise ne ostaje prazan kada pokrenes klasicni benchmark test.
+- Dodat je `Clear benchmark values` tok koji resetuje benchmark metrike, live istoriju i sacuvane benchmark run vrednosti pre novog merenja.
+- Updates fallback sada cita latest release direktno sa `joes021/local-ai-control-center` GitHub release API-ja, sa ispravnim Windows, Ubuntu x86_64 i Ubuntu arm64 installer URL-ovima.
+- Update installer nazivi i putanje vise nisu legacy `Local-Qwen-Setup-*`, nego prate stvarne `Local-AI-Control-Center-*` release artefakte.
 
 - Fixed Hugging Face browser size detection by preserving repo slashes in tree API requests, so Browser table sizes now load instead of staying `Unknown`.
 - Fixed detected active local models outside the managed models folder so they appear as installed and active in the Models tab.

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CustomSelect } from "../components/CustomSelect";
 import {
+  clearBenchmarkHistory,
   fetchBenchmark,
   loadBenchmarkBattery,
   restoreDefaultBenchmarkTests,
@@ -344,9 +345,9 @@ export function BenchmarkPage({ onOpenLogs }: { onOpenLogs: () => void }) {
   };
   const activeRun = benchmark?.activeRun;
 
-  const normalizedLiveHistory = useMemo<HistoryPoint[]>(
+  const normalizedSignalHistory = useMemo<HistoryPoint[]>(
     () =>
-      (benchmark?.liveHistory ?? [])
+      [...(benchmark?.history ?? []), ...(benchmark?.liveHistory ?? [])]
         .map((item) => {
           const timestampMs = parseTimestamp(item.measuredAt);
           if (timestampMs === null) {
@@ -358,7 +359,20 @@ export function BenchmarkPage({ onOpenLogs }: { onOpenLogs: () => void }) {
           };
         })
         .filter((item): item is HistoryPoint => item !== null)
-        .sort((left, right) => left.timestampMs - right.timestampMs),
+        .sort((left, right) => left.timestampMs - right.timestampMs)
+        .filter((item, index, items) => {
+          const previous = items[index - 1];
+          if (!previous) {
+            return true;
+          }
+          return !(
+            previous.timestampMs === item.timestampMs &&
+            previous.label === item.label &&
+            previous.totalTokensPerSecond === item.totalTokensPerSecond &&
+            previous.completionTokensPerSecond === item.completionTokensPerSecond &&
+            previous.promptTokensPerSecond === item.promptTokensPerSecond
+          );
+        }),
     [benchmark],
   );
 
@@ -366,11 +380,11 @@ export function BenchmarkPage({ onOpenLogs }: { onOpenLogs: () => void }) {
     const selectedRange = findRangeByKey(selectedRangeKey);
     const rangeEndMs = nowTickMs;
     const rangeStartMs = rangeEndMs - selectedRange.durationMs;
-    const visibleSamples = normalizedLiveHistory.filter(
+    const visibleSamples = normalizedSignalHistory.filter(
       (item) => item.timestampMs >= rangeStartMs && item.timestampMs <= rangeEndMs,
     );
     const previousSample =
-      [...normalizedLiveHistory].reverse().find((item) => item.timestampMs < rangeStartMs) ?? null;
+      [...normalizedSignalHistory].reverse().find((item) => item.timestampMs < rangeStartMs) ?? null;
     const lastSample =
       (() => {
         const parsedLiveCurrentTimestamp = parseTimestamp(benchmark?.liveCurrent?.measuredAt);
@@ -380,7 +394,7 @@ export function BenchmarkPage({ onOpenLogs }: { onOpenLogs: () => void }) {
             timestampMs: parsedLiveCurrentTimestamp,
           } as HistoryPoint;
         }
-        return normalizedLiveHistory[normalizedLiveHistory.length - 1] ?? null;
+        return normalizedSignalHistory[normalizedSignalHistory.length - 1] ?? null;
       })();
     const fallbackValues = [previousSample, lastSample]
       .flatMap((item) =>
@@ -452,7 +466,7 @@ export function BenchmarkPage({ onOpenLogs }: { onOpenLogs: () => void }) {
       inactiveForMs,
       yAxisLabels,
     };
-  }, [benchmark?.liveCurrent, normalizedLiveHistory, nowTickMs, selectedRangeKey]);
+  }, [benchmark?.liveCurrent, normalizedSignalHistory, nowTickMs, selectedRangeKey]);
 
   if (error) {
     return <div className="error-panel">{error}</div>;
@@ -501,6 +515,12 @@ export function BenchmarkPage({ onOpenLogs }: { onOpenLogs: () => void }) {
     await load();
   }
 
+  async function handleClearHistory() {
+    const result = await clearBenchmarkHistory();
+    setActionMessage(result.summary);
+    await load();
+  }
+
   function updateScenario(index: number, patch: Partial<BenchmarkScenario>) {
     setScenariosDraft((current) =>
       current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
@@ -536,6 +556,9 @@ export function BenchmarkPage({ onOpenLogs }: { onOpenLogs: () => void }) {
           />
           <button type="button" onClick={handleRestoreDefaults}>
             Restore default tests
+          </button>
+          <button type="button" className="secondary-button" onClick={handleClearHistory}>
+            Clear benchmark values
           </button>
         </div>
         <p className="helper-text">

@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from backend.app.services.benchmark_service import (
+    clear_benchmark_history,
     list_batteries,
     load_battery_selection,
     load_benchmark_summary,
@@ -53,6 +54,11 @@ def benchmark_load_battery(payload: dict[str, object]):
 @router.post("/batteries/restore-defaults")
 def benchmark_restore_defaults():
     return restore_default_batteries()
+
+
+@router.post("/clear-history")
+def benchmark_clear_history_route():
+    return clear_benchmark_history()
 
 
 @router.get("/history")

@@ -727,6 +727,18 @@ def restore_default_batteries() -> dict[str, object]:
     return {"status": "ok", "summary": "Podrazumevani benchmark testovi su vraceni.", "battery": payload["batteries"][0]}
 
 
+def clear_benchmark_history() -> dict[str, object]:
+    _write_json(_history_path(), [])
+    _write_json(_benchmark_history_runs_path(), [])
+    _write_json(_live_history_path(), [])
+    _write_json(_live_slots_snapshot_path(), {"measuredAt": "", "slots": {}})
+    _save_run_state(_idle_run_state())
+    return {
+        "status": "ok",
+        "summary": "Benchmark vrednosti i istorija su obrisani.",
+    }
+
+
 def list_batteries() -> dict[str, object]:
     payload = _load_batteries()
     return {
