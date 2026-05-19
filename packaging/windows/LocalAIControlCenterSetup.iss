@@ -201,7 +201,7 @@ begin
   UserProfilePath := GetEnv('USERPROFILE');
   if UserProfilePath = '' then
     UserProfilePath := ExpandConstant('{localappdata}');
-  Result := AddBackslash(UserProfilePath) + 'LocalQwenHome';
+  Result := AddBackslash(UserProfilePath) + 'LocalAIControlCenter';
 end;
 
 function ShouldShowMoreModelsAfterInstall(): Boolean;

@@ -243,7 +243,7 @@ function Open-AppUrl([string]$Url) {
 function Start-Backend([int]$Port) {
     $pythonExe = Get-PythonExe
     $runnerScript = Join-Path $script:Root "run_control_center_next.py"
-    $localQwenHome = if ($env:LOCAL_QWEN_HOME) { $env:LOCAL_QWEN_HOME } else { Join-Path $env:USERPROFILE "LocalQwenHome" }
+    $localQwenHome = if ($env:LOCAL_QWEN_HOME) { $env:LOCAL_QWEN_HOME } else { Join-Path $env:USERPROFILE "LocalAIControlCenter" }
     $frontendDist = Join-Path $script:FrontendDir "dist"
     $savedEnv = @{
         CONTROL_CENTER_NEXT_TARGET_PLATFORM = $env:CONTROL_CENTER_NEXT_TARGET_PLATFORM

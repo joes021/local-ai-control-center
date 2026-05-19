@@ -40,6 +40,9 @@ class WindowsInstallerBuilderTests(unittest.TestCase):
         content = (ROOT / "install" / "windows" / "install.ps1").read_text(encoding="utf-8")
         self.assertIn("legacy", content.lower())
         self.assertIn("Local Qwen 3.635Ba3B on home computer", content)
+        self.assertIn('$InstallRoot = "$env:USERPROFILE\\LocalAIControlCenter"', content)
+        self.assertIn('Join-Path $env:USERPROFILE "LocalAIControlCenter"', content)
+        self.assertIn('Join-Path $env:USERPROFILE "LocalQwenHome"', content)
         self.assertIn("control-center-next", content)
         self.assertIn("Start-LegacyRuntimeIfNeeded", content)
         self.assertIn("selectedModelId", content)
@@ -51,9 +54,10 @@ class WindowsInstallerBuilderTests(unittest.TestCase):
         self.assertIn("Write-InstallSummary", content)
         self.assertIn("support\\launcher\\windows", content)
         self.assertIn('$assetsDir = Join-Path $workspaceRoot "assets\\icons"', content)
-        self.assertIn('Copy-FolderContent -Source (Join-Path $payloadRoot "support\\config\\profiles") -Destination (Join-Path $workspaceRoot "config\\profiles")', content)
-        self.assertIn('Copy-FolderContent -Source (Join-Path $payloadRoot "support\\scripts") -Destination (Join-Path $workspaceRoot "scripts")', content)
-        self.assertIn('Copy-FolderContent -Source (Join-Path $payloadRoot "support\\assets\\icons") -Destination (Join-Path $workspaceRoot "assets\\icons")', content)
+        self.assertIn("function Get-WorkspaceSeedSource", content)
+        self.assertIn('Copy-FolderContent -Source (Get-WorkspaceSeedSource -PrimaryRelativePath "support\\config\\profiles" -FallbackRelativePath "config\\profiles") -Destination (Join-Path $workspaceRoot "config\\profiles")', content)
+        self.assertIn('Copy-FolderContent -Source (Get-WorkspaceSeedSource -PrimaryRelativePath "support\\scripts" -FallbackRelativePath "scripts") -Destination (Join-Path $workspaceRoot "scripts")', content)
+        self.assertIn('Copy-FolderContent -Source (Get-WorkspaceSeedSource -PrimaryRelativePath "support\\assets\\icons" -FallbackRelativePath "assets\\icons") -Destination (Join-Path $workspaceRoot "assets\\icons")', content)
         self.assertIn("install.log", content)
         self.assertIn("Next step:", content)
         self.assertIn("$resolvedLabel = [string]$catalogEntry.label", content)
@@ -101,6 +105,13 @@ class WindowsInstallerBuilderTests(unittest.TestCase):
         self.assertIn("Get-RequestedHost", content)
         self.assertIn("CONTROL_CENTER_NEXT_FORCE_RESTART", content)
         self.assertIn("runtime-config.json", content)
+        self.assertIn('Join-Path $env:USERPROFILE "LocalAIControlCenter"', content)
+        self.assertNotIn('Join-Path $env:USERPROFILE "LocalQwenHome"', content)
+
+    def test_windows_inno_setup_uses_local_ai_control_center_workspace_name(self):
+        content = (ROOT / "packaging" / "windows" / "LocalAIControlCenterSetup.iss").read_text(encoding="utf-8")
+        self.assertIn("LocalAIControlCenter", content)
+        self.assertNotIn("LocalQwenHome", content)
 
 
 if __name__ == "__main__":

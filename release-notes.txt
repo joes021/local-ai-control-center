@@ -1,8 +1,15 @@
+v2.24.16
+========
+
+- Windows installer, launcher i backend default workspace sada koriste `LocalAIControlCenter`, umesto starog `LocalQwenHome`.
+- Postojece Windows instalacije ostaju podrzane kroz legacy fallback na `LocalQwenHome`, tako da upgrade ne puca ako stari folder vec postoji.
+- Bootstrap sync i runtime launcher sada prvo gledaju novi `LocalAIControlCenter` root, pa tek onda stari legacy root.
+
 v2.24.15
 ========
 
 - Windows desktop shortcut ikonice sada eksplicitno koriste `IconLocation=<ico>,0`, pa `.lnk` fajlovi vise ne ostaju bez ikonice.
-- Windows shortcut sada vuce ikonicu iz stabilnog install root-a `LocalQwenHome\\assets\\icons`, umesto iz nestabilnijeg app shell path-a.
+- Windows shortcut sada vuce ikonicu iz stabilnog install root-a `LocalAIControlCenter\\assets\\icons`, umesto iz nestabilnijeg app shell path-a.
 - Windows desktop folder sada dobija `desktop.ini` i folder ikonicu, umesto generickog praznog folder prikaza.
 
 v2.24.14

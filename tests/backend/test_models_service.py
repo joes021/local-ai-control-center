@@ -394,6 +394,21 @@ class ModelsServiceTests(unittest.TestCase):
 
             self.assertEqual(detected, new_default)
 
+    def test_detect_local_qwen_home_uses_local_ai_control_center_on_windows(self):
+        from backend.app.services import local_qwen_paths
+
+        with TemporaryDirectory() as tmp:
+            fake_home = Path(tmp)
+
+            with (
+                mock.patch.dict("os.environ", {}, clear=True),
+                mock.patch.object(local_qwen_paths, "get_target_platform", return_value="windows"),
+                mock.patch.object(Path, "home", return_value=fake_home),
+            ):
+                detected = local_qwen_paths.detect_local_qwen_home()
+
+            self.assertEqual(detected, fake_home / "LocalAIControlCenter")
+
     def test_complete_model_action_updates_registry(self):
         from backend.app.services import models_service
 

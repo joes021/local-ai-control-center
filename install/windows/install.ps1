@@ -1,5 +1,5 @@
 ﻿param(
-    [string]$InstallRoot = "$env:USERPROFILE\LocalQwenHome",
+    [string]$InstallRoot = "$env:USERPROFILE\LocalAIControlCenter",
     [ValidateSet("Classic", "Unified")]
     [string]$Edition = "Unified",
     [ValidateSet("local-only", "tailscale")]
@@ -68,6 +68,20 @@ function Copy-FolderContent {
     }
     Ensure-Dir $Destination
     Copy-Item (Join-Path $Source "*") $Destination -Force -Recurse
+}
+
+function Get-WorkspaceSeedSource {
+    param(
+        [string]$PrimaryRelativePath,
+        [string]$FallbackRelativePath
+    )
+
+    $primaryPath = Join-Path $payloadRoot $PrimaryRelativePath
+    if (Test-Path $primaryPath) {
+        return $primaryPath
+    }
+
+    return (Join-Path $payloadRoot $FallbackRelativePath)
 }
 
 function Write-JsonFile {
@@ -228,16 +242,30 @@ function Sync-BootstrappedModelIntoWorkspace {
         return
     }
 
-    $fallbackHome = Join-Path $env:USERPROFILE "LocalQwenHome"
-    $candidatePaths = @(
-        (Join-Path $fallbackHome "models\$downloadFile"),
-        (Join-Path $fallbackHome ("models\\llama-cpp\\{0}\\{1}" -f [System.IO.Path]::GetFileNameWithoutExtension($downloadFile), $downloadFile))
-    )
+    $candidateHomes = @(
+        (Join-Path $env:USERPROFILE "LocalAIControlCenter"),
+        (Join-Path $env:USERPROFILE "LocalQwenHome")
+    ) | Select-Object -Unique
+    $candidatePaths = foreach ($candidateHome in $candidateHomes) {
+        @(
+            (Join-Path $candidateHome "models\$downloadFile"),
+            (Join-Path $candidateHome ("models\\llama-cpp\\{0}\\{1}" -f [System.IO.Path]::GetFileNameWithoutExtension($downloadFile), $downloadFile))
+        )
+    }
 
     $resolvedSource = $candidatePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
     if (-not $resolvedSource) {
-        $resolvedSource = Get-ChildItem -Path (Join-Path $fallbackHome "models") -Recurse -Filter $downloadFile -File -ErrorAction SilentlyContinue |
-            Select-Object -ExpandProperty FullName -First 1
+        foreach ($candidateHome in $candidateHomes) {
+            $modelsRoot = Join-Path $candidateHome "models"
+            if (-not (Test-Path $modelsRoot)) {
+                continue
+            }
+            $resolvedSource = Get-ChildItem -Path $modelsRoot -Recurse -Filter $downloadFile -File -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty FullName -First 1
+            if ($resolvedSource) {
+                break
+            }
+        }
     }
 
     if (-not $resolvedSource) {
@@ -973,9 +1001,9 @@ Copy-FolderContent -Source (Join-Path $payloadRoot "config") -Destination (Join-
 Copy-FolderContent -Source (Join-Path $payloadRoot "scripts") -Destination (Join-Path $appRoot "scripts")
 Copy-FolderContent -Source (Join-Path $payloadRoot "assets") -Destination (Join-Path $appRoot "assets")
 Copy-FolderContent -Source $legacyLaunchersPayloadDir -Destination $legacyLaunchersDir
-Copy-FolderContent -Source (Join-Path $payloadRoot "support\config\profiles") -Destination (Join-Path $workspaceRoot "config\profiles")
-Copy-FolderContent -Source (Join-Path $payloadRoot "support\scripts") -Destination (Join-Path $workspaceRoot "scripts")
-Copy-FolderContent -Source (Join-Path $payloadRoot "support\assets\icons") -Destination (Join-Path $workspaceRoot "assets\icons")
+Copy-FolderContent -Source (Get-WorkspaceSeedSource -PrimaryRelativePath "support\config\profiles" -FallbackRelativePath "config\profiles") -Destination (Join-Path $workspaceRoot "config\profiles")
+Copy-FolderContent -Source (Get-WorkspaceSeedSource -PrimaryRelativePath "support\scripts" -FallbackRelativePath "scripts") -Destination (Join-Path $workspaceRoot "scripts")
+Copy-FolderContent -Source (Get-WorkspaceSeedSource -PrimaryRelativePath "support\assets\icons" -FallbackRelativePath "assets\icons") -Destination (Join-Path $workspaceRoot "assets\icons")
 foreach ($file in @("run_control_center_next.py", "README.md", "version.json", "release-notes.txt")) {
     $source = Join-Path $payloadRoot $file
     if (Test-Path $source) {
