@@ -1,6 +1,8 @@
-v2.24.13
+v2.24.14
 ========
 
+- Windows desktop shortcut ikonice sada eksplicitno koriste `IconLocation=<ico>,0`, pa `.lnk` fajlovi vise ne ostaju bez ikonice.
+- Windows desktop folder sada dobija `desktop.ini` i folder ikonicu, umesto generickog praznog folder prikaza.
 - Browser download status i pending rezultat vise nisu zakucani skroz ispod tabele, nego stoje odmah ispod detail panela uz model na koji se akcija odnosi.
 - Browser download status sada ima i pravi progress bar, pa se ETA/procenat vizuelno vide odmah posle klika na `Download`.
 - Benchmark grafikon sada koristi objedinjeni signal iz `history` i `liveHistory`, pa vise ne ostaje prazan kada pokrenes klasicni benchmark test.

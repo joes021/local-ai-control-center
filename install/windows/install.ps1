@@ -373,9 +373,30 @@ function Write-Shortcut {
     $shortcut.Arguments = $Arguments
     $shortcut.WorkingDirectory = Split-Path -Parent $TargetPath
     if ($IconPath -and (Test-Path $IconPath)) {
-        $shortcut.IconLocation = $IconPath
+        $shortcut.IconLocation = "$IconPath,0"
     }
     $shortcut.Save()
+}
+
+function Write-DesktopFolderMetadata {
+    param(
+        [string]$FolderPath,
+        [string]$IconPath
+    )
+
+    if (-not (Test-Path $FolderPath) -or -not (Test-Path $IconPath)) {
+        return
+    }
+
+    $desktopIniPath = Join-Path $FolderPath "desktop.ini"
+    $desktopIniContent = @(
+        "[.ShellClassInfo]",
+        "IconResource=$IconPath,0",
+        "ConfirmFileOp=0"
+    ) -join "`r`n"
+    Set-Content -Path $desktopIniPath -Value $desktopIniContent -Encoding ascii
+    attrib +h +s $desktopIniPath | Out-Null
+    attrib +r $FolderPath | Out-Null
 }
 
 function Resolve-OpenCodePath {
@@ -981,6 +1002,7 @@ Write-Shortcut -ShortcutPath (Join-Path $desktopDir "Local AI Control Center.lnk
 if ($opencodeReady -and (Resolve-OpenCodePath)) {
     Write-Shortcut -ShortcutPath (Join-Path $desktopDir "OpenCode - Local AI Control Center.lnk") -TargetPath (Resolve-OpenCodePath) -IconPath $openCodeIconPath
 }
+Write-DesktopFolderMetadata -FolderPath $desktopDir -IconPath $controlCenterIconPath
 
 $llamaPath = Join-Path $appsDir "llama.cpp\build\bin\llama-server.exe"
 Write-JsonFile -Path $runtimeConfigPath -Payload @{ accessMode = $AccessMode }
