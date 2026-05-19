@@ -1,3 +1,9 @@
+v2.24.20
+========
+
+- Fresh installer rebuild from the current stable Windows and Linux runtime state.
+- GitHub release republished so latest setup assets match the live-tested portal/runtime behavior from 2.24.19.
+
 v2.24.19
 ========
 
