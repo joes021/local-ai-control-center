@@ -70,6 +70,23 @@ function Copy-FolderContent {
     Copy-Item (Join-Path $Source "*") $Destination -Force -Recurse
 }
 
+function Find-ExistingExecutablePath {
+    param(
+        [string[]]$CandidatePaths
+    )
+
+    foreach ($candidate in $CandidatePaths) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) {
+            continue
+        }
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
 function Get-WorkspaceSeedSource {
     param(
         [string]$PrimaryRelativePath,
@@ -99,6 +116,29 @@ function Write-InstallLogLine {
     $timestamp = (Get-Date).ToString("s")
     Ensure-Dir (Split-Path -Parent $installLogPath)
     Add-Content -Path $installLogPath -Value "[$timestamp] $Message" -Encoding utf8
+}
+
+function Get-ExceptionSummary {
+    param([System.Exception]$Exception)
+
+    if ($null -eq $Exception) {
+        return "Nepoznata greska."
+    }
+
+    $messages = New-Object System.Collections.Generic.List[string]
+    $current = $Exception
+    while ($null -ne $current) {
+        if (-not [string]::IsNullOrWhiteSpace($current.Message)) {
+            $messages.Add($current.Message.Trim())
+        }
+        $current = $current.InnerException
+    }
+
+    if ($messages.Count -eq 0) {
+        return $Exception.GetType().FullName
+    }
+
+    return (($messages | Select-Object -Unique) -join " | ")
 }
 
 function Read-JsonFile {
@@ -298,6 +338,15 @@ function Ensure-Python {
     if (Get-Command python -ErrorAction SilentlyContinue) {
         return "python"
     }
+    $pythonPath = Find-ExistingExecutablePath -CandidatePaths @(
+        (Join-Path $env:LOCALAPPDATA "Programs\Python\Python312\python.exe"),
+        (Join-Path $env:LOCALAPPDATA "Programs\Python\Python313\python.exe"),
+        (Join-Path $env:USERPROFILE "AppData\Local\Programs\Python\Python312\python.exe"),
+        (Join-Path $env:USERPROFILE "AppData\Local\Programs\Python\Python313\python.exe")
+    )
+    if ($pythonPath) {
+        return $pythonPath
+    }
     if (Ensure-Command -Name "python" -WingetId "Python.Python.3.12") {
         return "python"
     }
@@ -305,8 +354,27 @@ function Ensure-Python {
 }
 
 function Ensure-Node {
-    if (Get-Command node -ErrorAction SilentlyContinue -and Get-Command npm -ErrorAction SilentlyContinue) {
+    if ((Get-Command node -ErrorAction SilentlyContinue) -and (Get-Command npm -ErrorAction SilentlyContinue)) {
         return
+    }
+    $packagesRoot = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
+    if (Test-Path $packagesRoot) {
+        $nodePackage = Get-ChildItem -Path $packagesRoot -Directory -Filter "OpenJS.NodeJS.LTS_*" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+        if ($nodePackage) {
+            $nodeExe = Find-ExistingExecutablePath -CandidatePaths @(
+                (Join-Path $nodePackage.FullName "node.exe")
+            )
+            $npmCmd = Find-ExistingExecutablePath -CandidatePaths @(
+                (Join-Path $nodePackage.FullName "npm.cmd")
+            )
+            if ($nodeExe -and $npmCmd) {
+                $script:ManualNodeExe = $nodeExe
+                $script:ManualNpmCmd = $npmCmd
+                return
+            }
+        }
     }
     if (-not (Ensure-Command -Name "node" -WingetId "OpenJS.NodeJS.LTS")) {
         throw "Node.js nije dostupan."
@@ -320,7 +388,8 @@ function Ensure-OpenCode {
     if (Get-Command opencode -ErrorAction SilentlyContinue) {
         return $true
     }
-    npm install -g opencode-ai
+    $npmCommand = if ($script:ManualNpmCmd) { $script:ManualNpmCmd } else { "npm" }
+    & $npmCommand install -g opencode-ai
     return [bool](Get-Command opencode -ErrorAction SilentlyContinue)
 }
 
@@ -983,10 +1052,20 @@ Write-InstallLogLine "Guided model selection: id=$($selectedModelSelection.model
 
 if (-not $SkipDependencies) {
     Write-InstallLogLine "Dependency bootstrap started."
-    Ensure-Command -Name "git" -WingetId "Git.Git" | Out-Null
-    $pythonExe = Ensure-Python
-    Ensure-Node
-    Write-InstallLogLine "Dependency bootstrap finished."
+    try {
+        Ensure-Command -Name "git" -WingetId "Git.Git" | Out-Null
+        Write-InstallLogLine "Dependency bootstrap: git ready."
+        $pythonExe = Ensure-Python
+        Write-InstallLogLine "Dependency bootstrap: python ready at $pythonExe"
+        Ensure-Node
+        Write-InstallLogLine "Dependency bootstrap: node/npm ready. node=$script:ManualNodeExe npm=$script:ManualNpmCmd"
+        Write-InstallLogLine "Dependency bootstrap finished."
+    }
+    catch {
+        $exceptionSummary = Get-ExceptionSummary -Exception $_.Exception
+        Write-InstallLogLine "Dependency bootstrap failed: $exceptionSummary"
+        throw
+    }
 } else {
     $pythonExe = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "" }
     Write-InstallLogLine "Dependency bootstrap skipped by flag."
@@ -1015,13 +1094,21 @@ foreach ($file in @("run_control_center_next.py", "README.md", "version.json", "
 }
 
 Write-InstallLogLine "Checking runtime components."
-$opencodeReady = Ensure-OpenCode
-$llamaReady = Ensure-LlamaCpp
-$turboInfo = Ensure-TurboQuant
+try {
+    $opencodeReady = Ensure-OpenCode
+    Write-InstallLogLine "Component check: OpenCode=$opencodeReady"
+    $llamaReady = Ensure-LlamaCpp
+    Write-InstallLogLine "Component check: llamaReady=$llamaReady"
+    $turboInfo = Ensure-TurboQuant
+    Write-InstallLogLine "Component check: TurboQuant=$($turboInfo.status)"
+}
+catch {
+    $exceptionSummary = Get-ExceptionSummary -Exception $_.Exception
+    Write-InstallLogLine "Component check failed: $exceptionSummary"
+    throw
+}
 $turboServerPath = if ($turboInfo.status -eq "present") { Join-Path $appsDir "llama.cpp-turboquant\build-cuda\bin\llama-server.exe" } else { "" }
 Write-InstallLogLine "Component check finished: OpenCode=$opencodeReady llamaReady=$llamaReady TurboQuant=$($turboInfo.status)"
-$modelBootstrapState = Invoke-ModelBootstrap -SelectedModelSelection $selectedModelSelection
-Write-InstallLogLine "Model bootstrap result: status=$($modelBootstrapState.modelBootstrap.status) selectedModelDownloaded=$($modelBootstrapState.selectedModelDownloaded)"
 
 $launchWrapper = Write-LaunchWrapper
 $controlCenterIconPath = Join-Path $assetsDir "control-center.ico"
@@ -1035,6 +1122,10 @@ Write-DesktopFolderMetadata -FolderPath $desktopDir -IconPath $controlCenterIcon
 $llamaPath = Join-Path $appsDir "llama.cpp\build\bin\llama-server.exe"
 Write-JsonFile -Path $runtimeConfigPath -Payload @{ accessMode = $AccessMode }
 Write-InstallLogLine "Wrote runtime-config.json"
+Update-InstallStateAndSettings -LlamaReady $llamaReady -LlamaPath $llamaPath -TurboServerPath $turboServerPath -SelectedModelSelection $selectedModelSelection -ModelBootstrapState $null
+Write-InstallLogLine "Wrote initial install-state.json before model bootstrap."
+$modelBootstrapState = Invoke-ModelBootstrap -SelectedModelSelection $selectedModelSelection
+Write-InstallLogLine "Model bootstrap result: status=$($modelBootstrapState.modelBootstrap.status) selectedModelDownloaded=$($modelBootstrapState.selectedModelDownloaded)"
 Update-InstallStateAndSettings -LlamaReady $llamaReady -LlamaPath $llamaPath -TurboServerPath $turboServerPath -SelectedModelSelection $selectedModelSelection -ModelBootstrapState $modelBootstrapState
 $healthyRuntimePort = Start-LegacyRuntimeIfNeeded
 Write-InstallLogLine "Legacy runtime probe result: port=$healthyRuntimePort"

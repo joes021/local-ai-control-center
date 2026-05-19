@@ -1,3 +1,9 @@
+v2.24.17
+========
+
+- Windows installer sada ume da pronadje user-scoped Python i Node/NPM instalacije iz `AppData` i `WinGet` putanja, pa vise ne zapinje na `Dependency bootstrap started` na masinama gde nisu sistemski dodati u PATH.
+- Time setup stvarno stize do payload copy, desktop shortcut faze i folder ikonice, umesto da se prekine prerano i ostavi polu-instaliran root bez `.lnk` fajlova.
+
 v2.24.16
 ========
 
