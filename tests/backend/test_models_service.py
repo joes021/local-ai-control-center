@@ -241,6 +241,32 @@ class ModelsServiceTests(unittest.TestCase):
         self.assertEqual(payload["speedMBps"], 42.0)
         self.assertEqual(payload["etaSeconds"], 180)
 
+    def test_detected_active_model_outside_models_dir_is_marked_installed(self):
+        from backend.app.services import models_service
+
+        with TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            models_dir = home / "models"
+            state_dir = home / "state"
+            external_dir = home / "external-models"
+            models_dir.mkdir()
+            state_dir.mkdir()
+            external_dir.mkdir()
+            model_path = external_dir / "Qwen3.6-35B-A3B-MXFP4_MOE.gguf"
+            model_path.write_bytes(b"demo-bytes")
+
+            entry = models_service._build_detected_active_model_entry(
+                install_state={"modelId": model_path.name, "modelFile": str(model_path)},
+                models_dir=models_dir,
+                active_model_id=model_path.name,
+                seen_ids=set(),
+            )
+
+        self.assertIsNotNone(entry)
+        assert entry is not None
+        self.assertTrue(entry["installed"])
+        self.assertAlmostEqual(entry["installedSizeGiB"], 0.0, places=2)
+
     def test_load_download_progress_payload_returns_idle_without_file(self):
         from backend.app.services import models_service
 

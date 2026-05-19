@@ -564,7 +564,17 @@ def _build_model_entry(
         filename=filename,
         raw=raw,
     )
-    target_path = models_dir / filename if filename else None
+    explicit_path = str(
+        raw.get("modelPath")
+        or raw.get("absolutePath")
+        or raw.get("installedPath")
+        or ""
+    ).strip()
+    target_path = Path(explicit_path) if explicit_path else (models_dir / filename if filename else None)
+    if target_path and not target_path.is_file() and filename:
+        candidate = models_dir / filename
+        if candidate.is_file():
+            target_path = candidate
     installed = bool(target_path and target_path.is_file())
     installed_size_bytes = target_path.stat().st_size if installed and target_path else 0
     approx_size_gib = _as_float(raw.get("approxSizeGiB"))
@@ -639,6 +649,7 @@ def _build_detected_active_model_entry(
             "id": discovered_id,
             "label": filename,
             "filename": filename,
+            "modelPath": str(target_path),
             "family": _infer_model_family(filename),
             "description": "Detektovan iz aktivnog lokalnog runtime/install-state stanja.",
         },

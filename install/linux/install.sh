@@ -641,7 +641,7 @@ import sys
 path = Path(sys.argv[1])
 text = path.read_text(encoding="utf-8")
 old = '"baseURL": "http://127.0.0.1:8091/v1",'
-new = '"baseURL": f"http://127.0.0.1:{state[\\"port\\"]}/v1",'
+new = "\"baseURL\": f\"http://127.0.0.1:{state['port']}/v1\","
 if old in text:
     text = text.replace(old, new)
     path.write_text(text, encoding="utf-8")
@@ -740,7 +740,9 @@ copy_dir_content "$PAYLOAD_ROOT/frontend" "$APP_ROOT/frontend"
 copy_dir_content "$PAYLOAD_ROOT/launchers" "$APP_ROOT/launchers"
 copy_dir_content "$PAYLOAD_ROOT/install" "$APP_ROOT/install"
 copy_dir_content "$PAYLOAD_ROOT/config" "$APP_ROOT/config"
+copy_dir_content "$PAYLOAD_ROOT/config" "$WORKSPACE_ROOT/config"
 copy_dir_content "$PAYLOAD_ROOT/scripts" "$APP_ROOT/scripts"
+copy_dir_content "$PAYLOAD_ROOT/scripts" "$WORKSPACE_ROOT/scripts"
 copy_dir_content "$PAYLOAD_ROOT/assets" "$APP_ROOT/assets"
 copy_dir_content "$LEGACY_LAUNCHERS_PAYLOAD_DIR" "$LEGACY_LAUNCHERS_DIR"
 copy_if_exists "$PAYLOAD_ROOT/run_control_center_next.py" "$APP_ROOT/run_control_center_next.py"
@@ -780,6 +782,9 @@ do
   fi
 done
 HEALTHY_RUNTIME_PORT="$(detect_healthy_runtime_port || true)"
+if [ "$LLAMA_OK" != "true" ] && [ -n "$HEALTHY_RUNTIME_PORT" ]; then
+  LLAMA_OK=true
+fi
 WRAPPER_PATH="$(write_launcher_wrapper)"
 write_desktop_entry "$WRAPPER_PATH"
 STARTED_CONTROL_CENTER_URL=""

@@ -70,14 +70,18 @@ class LinuxInstallerPayloadTests(unittest.TestCase):
         self.assertIn('"selectedModelFile"', content)
         self.assertIn("normalize_shell_scripts", content)
         self.assertIn('find "$APP_ROOT/launchers" "$APP_ROOT/install" "$BIN_DIR" -type f -name "*.sh" -exec chmod +x {} +', content)
+        self.assertIn('copy_dir_content "$PAYLOAD_ROOT/config" "$WORKSPACE_ROOT/config"', content)
+        self.assertIn('copy_dir_content "$PAYLOAD_ROOT/scripts" "$WORKSPACE_ROOT/scripts"', content)
         self.assertIn('if [ -x "$target/build/bin/llama-server" ]; then', content)
         self.assertIn('if [ "$SKIP_LLAMA_SETUP" = "1" ]; then', content)
+        self.assertIn('if [ "$LLAMA_OK" != "true" ] && [ -n "$HEALTHY_RUNTIME_PORT" ]; then', content)
         self.assertIn("command -v node", content)
         self.assertIn("command -v npm", content)
         self.assertIn('packages=("git" "curl" "python3" "python3-venv" "python3-pip" "cmake" "ninja-build" "build-essential" "pkg-config")', content)
         self.assertNotIn("sudo apt-get install -y git curl python3 python3-venv python3-pip nodejs npm cmake ninja-build build-essential pkg-config", content)
         self.assertIn('INSTALL_ROOT="${INSTALL_ROOT:-$HOME/local-ai-control-center}"', content)
         self.assertIn('MODEL_FILE_BEFORE_BOOTSTRAP="$(detect_existing_model_file "$SELECTED_MODEL_FILE" || true)"', content)
+        self.assertIn('state[\'port\']', content)
 
     def test_linux_launcher_uses_local_qwen_home_state(self):
         content = (ROOT / "launchers" / "linux" / "start-control-center-next.sh").read_text(encoding="utf-8")
@@ -96,7 +100,8 @@ class LinuxInstallerPayloadTests(unittest.TestCase):
     def test_linux_builder_packages_legacy_launchers(self):
         content = (ROOT / "packaging" / "linux" / "build-run-installer.sh").read_text(encoding="utf-8")
         self.assertIn('"$payload_dir/legacy-launchers"', content)
-        self.assertIn('cp -R "$SUPPORT_REPO/launchers/." "$payload_dir/legacy-launchers/"', content)
+        self.assertIn('cp -R "$SUPPORT_REPO/launcher/linux/." "$payload_dir/legacy-launchers/"', content)
+        self.assertIn('cp -R "$REPO_ROOT/install/shared" "$payload_dir/install/"', content)
         self.assertIn('replace(b"\\r\\n", b"\\n")', content)
         self.assertIn("resolve_python_cmd()", content)
         self.assertIn('PYTHON_CMD="$(resolve_python_cmd)"', content)

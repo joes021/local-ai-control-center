@@ -53,6 +53,18 @@ class BrowserSourcesTests(unittest.TestCase):
         self.assertEqual(result.models[0]["sizeBytes"], 7 * 1024 * 1024 * 1024)
         self.assertEqual(result.models[0]["sizeLabel"], "7.0 GiB")
 
+    def test_read_repo_file_sizes_preserves_repo_slash_in_tree_url(self):
+        from backend.app.services import browser_sources
+
+        def fake_read_json(url: str):
+            self.assertIn("/api/models/unsloth/Qwen3.6-35B-A3B-GGUF/tree/main?recursive=1", url)
+            return [{"path": "demo.gguf", "size": 123}]
+
+        with patch("backend.app.services.browser_sources._read_json", side_effect=fake_read_json):
+            payload = browser_sources._read_repo_file_sizes("unsloth/Qwen3.6-35B-A3B-GGUF")
+
+        self.assertEqual(payload, {"demo.gguf": 123})
+
 
 if __name__ == "__main__":
     unittest.main()

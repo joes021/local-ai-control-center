@@ -168,7 +168,7 @@ def _read_json(url: str) -> object:
 
 
 def _read_repo_file_sizes(repo_id: str) -> dict[str, int]:
-    url = f"{HF_API}/{urllib_parse.quote(repo_id, safe='')}/tree/main?recursive=1"
+    url = f"{HF_API}/{urllib_parse.quote(repo_id, safe='/')}/tree/main?recursive=1"
     try:
         payload = _read_json(url)
     except Exception:  # noqa: BLE001
