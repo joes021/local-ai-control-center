@@ -866,10 +866,6 @@ def _activate_model_windows(model_id: str) -> dict[str, object]:
 
 
 def _download_model_windows(model_id: str) -> dict[str, object]:
-    script_path = _resolve_windows_manage_models_script()
-    if not script_path.is_file():
-        return _result("error", "download-model", f"Windows manage-models skripta nije pronadjena: {script_path}")
-
     home = detect_local_qwen_home()
     progress_path = home / "state" / "model-download-progress.json"
     progress_path.parent.mkdir(parents=True, exist_ok=True)
@@ -895,50 +891,7 @@ def _download_model_windows(model_id: str) -> dict[str, object]:
         encoding="utf-8",
     )
 
-    creation_flags = 0
-    powershell_exe = os.path.join(
-        os.environ.get("SystemRoot", r"C:\Windows"),
-        "System32",
-        "WindowsPowerShell",
-        "v1.0",
-        "powershell.exe",
-    )
-    if not os.path.isfile(powershell_exe):
-        powershell_exe = "powershell"
-    if os.name == "nt":
-        creation_flags = (
-            getattr(subprocess, "CREATE_NO_WINDOW", 0)
-            | getattr(subprocess, "DETACHED_PROCESS", 0)
-            | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        )
-
-    escaped_script = str(script_path).replace("'", "''")
-    escaped_progress = str(progress_path).replace("'", "''")
-    escaped_model = model_id.replace("'", "''")
-    wrapper = (
-        "$ErrorActionPreference='Stop'; "
-        f"try {{ & '{escaped_script}' -ModelId '{escaped_model}' -Download | Out-Null }} "
-        "catch { "
-        f"$payload = @{{ status='error'; modelId='{escaped_model}'; fileName=''; source=''; percent=$null; downloadedGiB=$null; totalGiB=$null; speedMBps=$null; etaSeconds=$null; message=$_.Exception.Message; updatedAt={started_at} }} | ConvertTo-Json -Depth 10; "
-        f"Set-Content -Path '{escaped_progress}' -Value $payload -Encoding UTF8; "
-        "exit 1 }"
-    )
-
-    process = subprocess.Popen(
-        [
-            powershell_exe,
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            wrapper,
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        stdin=subprocess.DEVNULL,
-        creationflags=creation_flags,
-        close_fds=True,
-    )
+    process = _spawn_windows_download_worker(model_id)
     return {
         "status": "ok",
         "action": "download-model",
@@ -949,6 +902,74 @@ def _download_model_windows(model_id: str) -> dict[str, object]:
             "stderr": "",
         },
     }
+
+
+def _run_windows_download_worker(model_id: str) -> None:
+    script_path = _resolve_windows_manage_models_script()
+    if not script_path.is_file():
+        raise FileNotFoundError(f"Windows manage-models skripta nije pronadjena: {script_path}")
+
+    powershell_exe = os.path.join(
+        os.environ.get("SystemRoot", r"C:\Windows"),
+        "System32",
+        "WindowsPowerShell",
+        "v1.0",
+        "powershell.exe",
+    )
+    if not os.path.isfile(powershell_exe):
+        powershell_exe = "powershell"
+
+    completed = subprocess.run(
+        [
+            powershell_exe,
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script_path),
+            "-ModelId",
+            model_id,
+            "-Download",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        stdin=subprocess.DEVNULL,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if completed.returncode != 0:
+        message = completed.stderr.strip() or f"Windows download worker nije uspeo za {model_id}"
+        raise RuntimeError(message)
+
+
+def _spawn_windows_download_worker(model_id: str) -> subprocess.Popen[str]:
+    repo_root = Path(__file__).resolve().parents[3]
+    worker_path = repo_root / "backend" / "app" / "workers" / "windows_download_worker.py"
+
+    creation_flags = 0
+    if os.name == "nt":
+        creation_flags = (
+            getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            | getattr(subprocess, "DETACHED_PROCESS", 0)
+            | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        )
+
+    return subprocess.Popen(
+        [
+            sys.executable,
+            str(worker_path),
+            "--model-id",
+            model_id,
+        ],
+        cwd=str(repo_root),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+        creationflags=creation_flags,
+        close_fds=True,
+    )
 
 
 def _resolve_windows_manage_models_script() -> Path:

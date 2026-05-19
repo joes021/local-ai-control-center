@@ -246,11 +246,8 @@ class ModelsServiceTests(unittest.TestCase):
 
         with TemporaryDirectory() as tmp:
             home = Path(tmp)
-            launchers = home / "launchers"
             state_dir = home / "state"
-            launchers.mkdir(parents=True)
             state_dir.mkdir(parents=True)
-            (launchers / "manage-models.ps1").write_text("# demo", encoding="utf-8")
 
             fake_process = mock.Mock(pid=4321)
             with (
@@ -261,6 +258,8 @@ class ModelsServiceTests(unittest.TestCase):
                 result = models_service.download_model("hf-demo.gguf")
 
             self.assertEqual(result["status"], "ok")
+            args = popen_mock.call_args.args[0]
+            self.assertIn("windows_download_worker.py", " ".join(args))
             kwargs = popen_mock.call_args.kwargs
             self.assertTrue(kwargs["close_fds"])
             self.assertNotEqual(kwargs["creationflags"], 0)

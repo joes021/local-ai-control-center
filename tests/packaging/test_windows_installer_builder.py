@@ -116,6 +116,9 @@ class WindowsInstallerBuilderTests(unittest.TestCase):
         self.assertIn('Join-Path $env:USERPROFILE "LocalAIControlCenter"', content)
         self.assertNotIn('Join-Path $env:USERPROFILE "LocalQwenHome"', content)
         self.assertIn('LocalAIControlCenterNextStartup', content)
+        self.assertIn('$script:InstalledAppRoot = Join-Path $script:LauncherParent "control-center-next"', content)
+        self.assertIn('$script:WorkspaceRoot = $script:LauncherParent', content)
+        self.assertIn('$script:StateDir = Join-Path $script:WorkspaceRoot "state"', content)
 
     def test_windows_inno_setup_uses_local_ai_control_center_workspace_name(self):
         content = (ROOT / "packaging" / "windows" / "LocalAIControlCenterSetup.iss").read_text(encoding="utf-8")

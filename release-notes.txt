@@ -1,9 +1,10 @@
-v2.24.23
+v2.24.24
 ========
 
 - Windows Browser download now starts through a detached worker and writes a real timestamped progress state, so the panel no longer gets stuck forever on `starting`.
 - Windows reinstall now reuses an already active local model for readiness instead of silently trying to bootstrap a new wizard-default model in the background.
 - This reduces the hidden post-install workload that was keeping setup at the end without a visible `Finish` transition on existing installs.
+- Installed Windows launcher sada pravilno razlikuje workspace root od `control-center-next` app root-a, pa backend start koristi pravi `.venv` i vise ne pada na obican `python` bez `uvicorn` paketa.
 
 v2.24.20
 ========

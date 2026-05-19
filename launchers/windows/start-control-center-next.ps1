@@ -1,10 +1,19 @@
 $ErrorActionPreference = "Stop"
 
-$script:Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$script:LauncherParent = Split-Path -Parent $PSScriptRoot
+$script:InstalledAppRoot = Join-Path $script:LauncherParent "control-center-next"
+if (Test-Path (Join-Path $script:InstalledAppRoot "backend")) {
+    $script:WorkspaceRoot = $script:LauncherParent
+    $script:Root = $script:InstalledAppRoot
+}
+else {
+    $script:Root = Split-Path -Parent $script:LauncherParent
+    $script:WorkspaceRoot = $script:Root
+}
 $script:BackendDir = Join-Path $script:Root "backend"
 $script:FrontendDir = Join-Path $script:Root "frontend"
 $script:VenvDir = Join-Path $script:Root ".venv"
-$script:StateDir = Join-Path $script:Root "state"
+$script:StateDir = Join-Path $script:WorkspaceRoot "state"
 $script:StateFile = Join-Path $script:StateDir "runtime-state.json"
 $script:RuntimeConfigFile = Join-Path $script:StateDir "runtime-config.json"
 $script:StartupMutexName = "LocalAIControlCenterNextStartup"
