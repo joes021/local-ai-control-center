@@ -10,7 +10,7 @@ class SettingsApplyTests(unittest.TestCase):
                 "profile": "balanced",
                 "context": 262144,
                 "outputTokens": 32000,
-                "workingDirectory": "/home/joes021",
+                "workingDirectory": "/home/local-ai-user",
                 "thinkingMode": "high",
             }
         )
@@ -18,7 +18,7 @@ class SettingsApplyTests(unittest.TestCase):
         self.assertEqual(env["PROFILE"], "balanced")
         self.assertEqual(env["CONTEXT_SIZE"], "262144")
         self.assertEqual(env["MAX_OUTPUT_TOKENS"], "32000")
-        self.assertEqual(env["WORKING_DIRECTORY"], "/home/joes021")
+        self.assertEqual(env["WORKING_DIRECTORY"], "/home/local-ai-user")
         self.assertEqual(env["BUILD_STEPS"], "120")
         self.assertEqual(env["PLAN_STEPS"], "100")
         self.assertEqual(env["GENERAL_STEPS"], "100")
