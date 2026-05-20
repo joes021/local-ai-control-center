@@ -1,3 +1,10 @@
+v2.24.27
+========
+
+- Windows setup sada prvo izvrsava stari stabilni installer/runtime core iz payload-a, pa tek onda radi `Next` overlay.
+- Stable core ponovo postaje izvor istine za dependency bootstrap, model download, OpenCode wiring i TurboQuant build.
+- Unified installer payload sada nosi i staged legacy `support/install/windows` core, umesto da pokusava da sve kriticne install odluke resava samo kroz novi tok.
+
 v2.24.26
 ========
 

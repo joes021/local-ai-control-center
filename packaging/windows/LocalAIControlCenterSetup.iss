@@ -57,6 +57,7 @@ Source: "{#SupportRoot}\config\profiles\*"; DestDir: "{app}\config\profiles"; Fl
 Source: "{#SupportRoot}\scripts\*"; DestDir: "{app}\scripts"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc"
 Source: "{#SupportRoot}\assets\icons\*"; DestDir: "{app}\assets\icons"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SupportRoot}\launcher\windows\*"; DestDir: "{app}\support\launcher\windows"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SupportRoot}\install\windows\*"; DestDir: "{app}\support\install\windows"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Code]
 var

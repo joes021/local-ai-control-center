@@ -115,11 +115,12 @@ function New-StagingPayload {
         Copy-IfExists -Source (Join-Path $repoRoot $file) -Destination (Join-Path $payloadRoot $file)
     }
 
-    New-Item -ItemType Directory -Force -Path (Join-Path $supportRoot "config\profiles"), (Join-Path $supportRoot "scripts"), (Join-Path $supportRoot "assets\icons"), (Join-Path $supportRoot "launcher\windows") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $supportRoot "config\profiles"), (Join-Path $supportRoot "scripts"), (Join-Path $supportRoot "assets\icons"), (Join-Path $supportRoot "launcher\windows"), (Join-Path $supportRoot "install\windows") | Out-Null
     Copy-FolderIfExists -Source (Join-Path $SupportRepoRoot "config\profiles") -Destination (Join-Path $supportRoot "config\profiles")
     Copy-FolderIfExists -Source (Join-Path $SupportRepoRoot "scripts") -Destination (Join-Path $supportRoot "scripts")
     Copy-FolderIfExists -Source (Join-Path $SupportRepoRoot "assets\icons") -Destination (Join-Path $supportRoot "assets\icons")
     Copy-FolderIfExists -Source (Join-Path $SupportRepoRoot "launcher\windows") -Destination (Join-Path $supportRoot "launcher\windows")
+    Copy-FolderIfExists -Source (Join-Path $SupportRepoRoot "install\windows") -Destination (Join-Path $supportRoot "install\windows")
 
     $supportLauncherDir = Join-Path $supportRoot "launcher\windows"
     $legacyCommon = Join-Path $supportLauncherDir "local-qwen-common.ps1"
@@ -143,6 +144,21 @@ function New-StagingPayload {
                 -replace 'joes021/Local-Qwen-3\.635Ba3B-on-home-computer', 'joes021/local-ai-control-center' `
                 -replace 'Local Qwen Control Center\.lnk', 'Local AI Control Center.lnk' `
                 -replace 'opencode-local-qwen\.ico', 'opencode-control-center.ico'
+            if ($updated -ne $content) {
+                Set-Content -Path $_.FullName -Value $updated -Encoding UTF8
+            }
+        }
+    }
+
+    $supportInstallDir = Join-Path $supportRoot "install\windows"
+    if (Test-Path $supportInstallDir) {
+        Get-ChildItem -Path $supportInstallDir -File -ErrorAction SilentlyContinue | ForEach-Object {
+            $content = Get-Content -Raw $_.FullName
+            $updated = $content `
+                -replace 'LocalQwenHome', 'LocalAIControlCenter' `
+                -replace 'Local Qwen Home Computer', 'Local AI Control Center' `
+                -replace 'Local Qwen', 'Local AI' `
+                -replace 'local-qwen', 'local-ai-control-center'
             if ($updated -ne $content) {
                 Set-Content -Path $_.FullName -Value $updated -Encoding UTF8
             }

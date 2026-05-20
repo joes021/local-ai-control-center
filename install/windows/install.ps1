@@ -30,6 +30,7 @@ $appsDir = Join-Path $workspaceRoot "apps"
 $binDir = Join-Path $workspaceRoot "bin"
 $launchersDir = Join-Path $appRoot "launchers\windows"
 $legacyLaunchersPayloadDir = Join-Path $payloadRoot "support\launcher\windows"
+$legacyInstallPayloadDir = Join-Path $payloadRoot "support\install\windows"
 $legacyLaunchersDir = Join-Path $workspaceRoot "launchers"
 $configProfilesDir = Join-Path $appRoot "config\profiles"
 $scriptsDir = Join-Path $appRoot "scripts"
@@ -42,6 +43,7 @@ $settingsPath = Join-Path $stateDir "settings.json"
 $runtimeConfigPath = Join-Path $stateDir "runtime-config.json"
 $runtimeStatePath = Join-Path $stateDir "runtime-state.json"
 $serviceLifecyclePath = Join-Path $stateDir "server-lifecycle.json"
+$legacyInstallStatusPath = Join-Path $stateDir "legacy-install-status.ini"
 $opencodeWorkspaceDir = Join-Path $workspaceRoot "opencode-workspace"
 $desktopDir = Join-Path $env:USERPROFILE "Desktop\Local AI Control Center"
 $recommendedModelsCatalogPath = Join-Path $payloadRoot "install\shared\recommended-models.json"
@@ -267,6 +269,48 @@ function Register-InstallerSelectedModelWithLegacyCatalog {
     Write-InstallLogLine "Legacy catalog registration: source=$customSource repo=$repo legacyModelId=$legacyModelId"
     $SelectedModelSelection.legacyModelId = $legacyModelId
     return $SelectedModelSelection
+}
+
+function Invoke-LegacyCoreInstall {
+    param([object]$SelectedModelSelection)
+
+    $legacyInstallScript = Join-Path $legacyInstallPayloadDir "install.ps1"
+    if (-not (Test-Path $legacyInstallScript)) {
+        throw "Legacy core installer nije pronadjen: $legacyInstallScript"
+    }
+
+    $legacyModelId = if (-not [string]::IsNullOrWhiteSpace([string]$SelectedModelSelection.legacyModelId)) {
+        [string]$SelectedModelSelection.legacyModelId
+    }
+    else {
+        [string]$SelectedModelSelection.modelId
+    }
+
+    $arguments = @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $legacyInstallScript,
+        "-InstallRoot", $workspaceRoot,
+        "-DesktopFolder", (Join-Path $env:USERPROFILE "Desktop"),
+        "-Profile", $Profile,
+        "-ModelId", $legacyModelId,
+        "-LogPath", $installLogPath,
+        "-SummaryPath", $installSummaryPath,
+        "-StatusPath", $legacyInstallStatusPath
+    )
+
+    if ($SkipDependencies) { $arguments += "-SkipDependencies" }
+    if ($SkipOpenCodeInstall) { $arguments += "-SkipOpenCodeInstall" }
+    if ($SkipLlamaSetup) { $arguments += "-SkipLlamaDownload" }
+    if ($SkipTurboQuant) { $arguments += "-SkipTurboQuantBuild" }
+    if ($SkipModelDownload) { $arguments += "-SkipModelDownload" }
+
+    Write-InstallLogLine "Legacy core install start: modelId=$legacyModelId"
+    & (Get-WindowsPowerShellExe) @arguments | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw "Legacy core installer nije uspeo. Exit code: $LASTEXITCODE"
+    }
+    Write-InstallLogLine "Legacy core install finished successfully."
 }
 
 function Sync-BootstrappedModelIntoWorkspace {
@@ -1406,6 +1450,10 @@ $selectedModelSelection = Resolve-SelectedModelSelection `
     -RequestedDownloadFile $SelectedModelDownloadFile `
     -RequestedVramClass $SelectedModelVramClass
 Write-InstallLogLine "Guided model selection: id=$($selectedModelSelection.modelId) source=$($selectedModelSelection.source) showMoreModels=$($selectedModelSelection.showMoreModelsAfterInstall)"
+if (-not [string]::IsNullOrWhiteSpace([string]$selectedModelSelection.customSource)) {
+    $selectedModelSelection = Register-InstallerSelectedModelWithLegacyCatalog -SelectedModelSelection $selectedModelSelection
+}
+Invoke-LegacyCoreInstall -SelectedModelSelection $selectedModelSelection
 
 if (-not $SkipDependencies) {
     Write-InstallLogLine "Dependency bootstrap started."

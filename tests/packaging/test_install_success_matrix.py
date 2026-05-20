@@ -16,6 +16,7 @@ class InstallSuccessMatrixTests(unittest.TestCase):
         self.assertIn("Control Center startup", content)
         self.assertIn('$turboQuantRequired = -not $SkipTurboQuant', content)
         self.assertIn('if ($turboQuantRequired -and -not $components.turboQuantRuntime.ok) { $failedCore += "TurboQuant" }', content)
+        self.assertIn("Legacy core install finished successfully.", content)
 
     def test_linux_installer_declares_arm64_optional_turboquant(self):
         content = (ROOT / "install" / "linux" / "install.sh").read_text(encoding="utf-8")
