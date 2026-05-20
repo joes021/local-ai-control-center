@@ -14,6 +14,8 @@ class InstallSuccessMatrixTests(unittest.TestCase):
         self.assertIn("TurboQuant", content)
         self.assertIn("Runtime port", content)
         self.assertIn("Control Center startup", content)
+        self.assertIn('$turboQuantRequired = -not $SkipTurboQuant', content)
+        self.assertIn('if ($turboQuantRequired -and -not $components.turboQuantRuntime.ok) { $failedCore += "TurboQuant" }', content)
 
     def test_linux_installer_declares_arm64_optional_turboquant(self):
         content = (ROOT / "install" / "linux" / "install.sh").read_text(encoding="utf-8")

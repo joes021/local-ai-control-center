@@ -883,11 +883,13 @@ function Get-ModelBootstrapState {
     $selectedModelDownloaded = $false
     $installedModelLeaf = if ($InstalledModelFile) { Split-Path $InstalledModelFile -Leaf } else { "" }
     $hasExistingInstalledModel = -not [string]::IsNullOrWhiteSpace($InstalledModelFile) -and (Test-Path $InstalledModelFile)
+    $selectedModelMatchesInstalledModel = $InstalledModelFile -and $selectedModelDownloadFile -and ($installedModelLeaf -eq $selectedModelDownloadFile)
     if ($selectedModelPath -and (Test-Path $selectedModelPath)) {
         $selectedModelDownloaded = $true
     }
-    elseif ($InstalledModelFile -and $selectedModelDownloadFile -and ((Split-Path $InstalledModelFile -Leaf) -eq $selectedModelDownloadFile)) {
+    elseif ($selectedModelMatchesInstalledModel) {
         $selectedModelDownloaded = $true
+        $selectedModelPath = $InstalledModelFile
     }
 
     $effectiveStatus = $BootstrapStatus
@@ -899,12 +901,7 @@ function Get-ModelBootstrapState {
             $effectiveStatus = "ready"
         }
         elseif ($hasExistingInstalledModel) {
-            $effectiveStatus = "ready-existing-model"
-            $selectedModelDownloaded = $true
-            $selectedModelPath = $InstalledModelFile
-            if ([string]::IsNullOrWhiteSpace($selectedModelDownloadFile)) {
-                $selectedModelDownloadFile = $installedModelLeaf
-            }
+            $effectiveStatus = "different-model-active"
         }
         else {
             $effectiveStatus = "download-required"
@@ -916,7 +913,7 @@ function Get-ModelBootstrapState {
         switch ($effectiveStatus) {
             "selection-missing" { $BootstrapMessage = "Installer nema kompletan selected model selection za model bootstrap fazu." }
             "ready" { $BootstrapMessage = "Selected model je spreman za model bootstrap fazu." }
-            "ready-existing-model" { $BootstrapMessage = "Postojeci aktivni lokalni model je prepoznat i koristi se za readiness tok bez novog download-a." }
+            "different-model-active" { $BootstrapMessage = "Na masini postoji drugi aktivni model, ali installer i dalje mora da potvrdi ili preuzme bas izabrani model." }
             "download-required" { $BootstrapMessage = "Selected model jos nije prisutan i mora da prodje model bootstrap/download fazu." }
             "downloaded" { $BootstrapMessage = "Selected model je uspesno preuzet kroz model bootstrap fazu." }
             "download-skipped" { $BootstrapMessage = "Model bootstrap nije kompletan jer je download preskocen." }
@@ -984,7 +981,12 @@ function Invoke-ModelBootstrap {
 
     Sync-BootstrappedModelIntoWorkspace -SelectedModelSelection $SelectedModelSelection
 
-    return (Get-ModelBootstrapState -SelectedModelSelection $SelectedModelSelection -InstalledModelFile (Get-PreferredModelFile) -BootstrapStatus "downloaded")
+    $resolvedBootstrapState = Get-ModelBootstrapState -SelectedModelSelection $SelectedModelSelection -InstalledModelFile (Get-PreferredModelFile) -BootstrapStatus "downloaded"
+    if (-not $resolvedBootstrapState.modelBootstrap.bootstrapReady) {
+        return (Get-ModelBootstrapState -SelectedModelSelection $SelectedModelSelection -InstalledModelFile (Get-PreferredModelFile) -BootstrapStatus "download-failed" -BootstrapMessage "Selected model nije pronadjen posle download koraka.")
+    }
+
+    return $resolvedBootstrapState
 }
 
 function Invoke-FirstRunProbe {
@@ -1521,6 +1523,7 @@ $components = [ordered]@{
         probeResponse = [string]$firstRunProbeState.probeResponse
     }
 }
+$turboQuantRequired = -not $SkipTurboQuant
 Write-JsonFile -Path $installReportPath -Payload @{
     installRoot = $workspaceRoot
     appRoot = $appRoot
@@ -1540,6 +1543,7 @@ if (-not $healthyRuntimePort) { $failedCore += "runtime health" }
 if (-not $components.openCode.ok) { $failedCore += "OpenCode" }
 if (-not $components.modelBootstrap.bootstrapReady) { $failedCore += "model bootstrap" }
 if (-not $components.firstRunProbe.probeReady) { $failedCore += "first-run probe" }
+if ($turboQuantRequired -and -not $components.turboQuantRuntime.ok) { $failedCore += "TurboQuant" }
 Write-InstallSummary -Components $components -SelectedModelSelection $selectedModelSelection -ControlCenterStart $controlCenterStart -RuntimePort $healthyRuntimePort -FailedCore $failedCore
 Write-InstallLogLine "Install summary written."
 

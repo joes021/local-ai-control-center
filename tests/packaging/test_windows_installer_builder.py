@@ -79,6 +79,9 @@ class WindowsInstallerBuilderTests(unittest.TestCase):
         self.assertIn('$modelIdToDownload = [string]$SelectedModelSelection.legacyModelId', content)
         self.assertIn('-ModelId $modelIdToDownload -Download', content)
         self.assertIn("Sync-BootstrappedModelIntoWorkspace -SelectedModelSelection $SelectedModelSelection", content)
+        self.assertIn('$selectedModelMatchesInstalledModel = $InstalledModelFile -and $selectedModelDownloadFile -and ($installedModelLeaf -eq $selectedModelDownloadFile)', content)
+        self.assertIn('$effectiveStatus = "different-model-active"', content)
+        self.assertIn("Selected model nije pronadjen posle download koraka.", content)
         self.assertIn("local-ai-control-center-common.ps1", content)
         self.assertNotIn("local-qwen-common.ps1", content)
         self.assertIn('Join-Path $npmDir "node_modules\\opencode-ai\\bin\\opencode.exe"', content)
@@ -95,6 +98,7 @@ class WindowsInstallerBuilderTests(unittest.TestCase):
         self.assertIn('Write-Shortcut -ShortcutPath (Join-Path $desktopDir "Local AI Control Center.lnk") -TargetPath $launchWrapper -IconPath $controlCenterIconPath', content)
         self.assertIn('Write-Shortcut -ShortcutPath (Join-Path $desktopDir "OpenCode - Local AI Control Center.lnk") -TargetPath (Resolve-OpenCodePath) -IconPath $openCodeIconPath', content)
         self.assertIn("Write-DesktopFolderMetadata -FolderPath $desktopDir -IconPath $controlCenterIconPath", content)
+        self.assertNotIn('$effectiveStatus = "ready-existing-model"', content)
         catalog_block = content.split("if ($catalogEntry) {", 1)[1].split("if ([string]::IsNullOrWhiteSpace($resolvedLabel)) {", 1)[0]
         self.assertIn("$resolvedLabel = [string]$catalogEntry.label", catalog_block)
         self.assertIn("$resolvedDownloadFile = [string]$catalogEntry.downloadFile", catalog_block)

@@ -1,3 +1,10 @@
+v2.24.26
+========
+
+- Windows installer vise ne smatra da je `model bootstrap` gotov samo zato sto postoji neki drugi aktivni model; readiness sada vazi samo za tacno izabrani model.
+- Ako je izabrani model i dalje nedostupan posle download koraka, installer to sada prijavljuje kao stvarni `download-failed`, umesto da tiho nastavi.
+- Ako je u wizard-u ostavljeno cekirano `Install TurboQuant`, Windows installer sada tretira neuspesan TurboQuant kao obavezni kvar instalacije, a ne kao nebitan sporedni status.
+
 v2.24.25
 ========
 
